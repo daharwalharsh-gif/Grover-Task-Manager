@@ -6,8 +6,10 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
+    "db:check": "node data/scripts/db-check.js",
     "db:migrate": "node data/scripts/migrate.js",
-    "db:seed-admin": "node data/scripts/seed-admin.js"
+    "db:seed-admin": "node data/scripts/seed-admin.js",
+    "db:setup": "npm run db:migrate && npm run db:seed-admin"
   },
   "engines": {
     "node": ">=20"

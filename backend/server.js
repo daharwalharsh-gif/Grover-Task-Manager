@@ -56,7 +56,19 @@ app.use(express.urlencoded({ extended: true, limit: '12mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+// Health check — Hostinger/uptime monitor ke liye. ?db=1 lagane par database
+// ko bhi ping karta hai, taaki deploy ke baad ek hi URL se pata chal jaye ki
+// app aur DB dono jude hain:  /api/health?db=1
+app.get('/api/health', async (req, res) => {
+  if (!('db' in req.query)) return res.json({ status: 'ok' });
+  try {
+    const [[r]] = await db.query('SELECT VERSION() AS v, DATABASE() AS d');
+    res.json({ status: 'ok', db: { connected: true, version: r.v, database: r.d } });
+  } catch (e) {
+    console.error('Health DB ping failed:', e.message);
+    res.status(503).json({ status: 'degraded', db: { connected: false } });
+  }
+});
 
 // ══════════════════════════════════════════════════════
 // ROUTE MODULES KA SHARED CONTEXT
@@ -4141,8 +4153,19 @@ app.use((err, req, res, next) => {
 // deta hai (api/index.js `app` ko wahan pass karta hai). listen() wahan
 // bekaar bhi hai aur cold start ko dheema bhi karta hai.
 if (!IS_SERVERLESS) {
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`\n  ✦ ${BRAND.short}: http://localhost:${PORT}\n`);
+    // Boot par ek baar DB ko chhoo kar dekh lo. Fail ho to app girti NAHI —
+    // static pages/health chalte rehte hain — bas log me saaf likha aata hai
+    // ki .env ke DB_* / DATABASE_URL dekhne hain (Hostinger par sabse aam galti).
+    try {
+      const [[r]] = await db.query('SELECT VERSION() AS v, DATABASE() AS d');
+      console.log(`  ✅ Database connected: ${r.d} (${r.v})`);
+    } catch (e) {
+      console.error(`  ❌ Database connect nahi hua: ${e.mysqlCode || e.code || ''} ${e.message}`);
+      console.error('     .env me DB_HOST / DB_USER / DB_PASSWORD / DB_NAME (ya DATABASE_URL) dekho,');
+      console.error('     phir  npm run db:check  chalao.');
+    }
   });
 }
 
