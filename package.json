@@ -9,7 +9,8 @@
     "db:check": "node data/scripts/db-check.js",
     "db:migrate": "node data/scripts/migrate.js",
     "db:seed-admin": "node data/scripts/seed-admin.js",
-    "db:setup": "npm run db:migrate && npm run db:seed-admin"
+    "db:setup": "npm run db:migrate && npm run db:seed-admin",
+    "zip": "node data/scripts/make-zip.js"
   },
   "engines": {
     "node": ">=20"

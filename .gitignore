@@ -19,3 +19,7 @@ apps_script_proof_upload.gs
 # Local editor / AI tooling ka config — machine ke saath badalta hai, repo me
 # jaane ki zarurat nahi.
 .claude/
+
+# Hostinger upload ZIP (npm run zip) — repo me nahi
+dist/
+*.zip
