@@ -159,6 +159,35 @@ function toggleSidebarPin() {
 // Head me class already lag chuki hai — yahan sirf button ka label/state sync karo
 applySidebarPin(document.documentElement.classList.contains('sidebar-pinned'));
 
+// ══════════════════════════════════════════════════════
+// MOBILE SIDEBAR (≤768px) — hamburger se khulne wala drawer
+// ══════════════════════════════════════════════════════
+// Desktop par sidebar hover/pin se chalta hai (upar). Chhoti screen par wo
+// off-canvas rehta hai (css/responsive.css) aur topbar ka ☰ button use
+// <html class="sidebar-open"> se kholta hai. Sirf UI — data/API ko nahi chhuta.
+function toggleMobileSidebar(force) {
+  const html = document.documentElement;
+  const open = typeof force === 'boolean' ? force : !html.classList.contains('sidebar-open');
+  html.classList.toggle('sidebar-open', open);
+  const btn = document.getElementById('menuToggle');
+  if (btn) {
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+  }
+}
+function closeMobileSidebar() { toggleMobileSidebar(false); }
+(function initMobileSidebar() {
+  const sb = document.getElementById('sidebar');
+  // Nav item / profile / logout tap hote hi drawer band — warna page badal
+  // jaata hai par parda upar hi rehta.
+  if (sb) sb.addEventListener('click', (e) => {
+    if (e.target.closest('.nav-item, .sidebar-user, .logout-btn')) closeMobileSidebar();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMobileSidebar(); });
+  // Rotate / resize karke desktop width par aaye to drawer state saaf kar do
+  window.addEventListener('resize', () => { if (window.innerWidth > 768) closeMobileSidebar(); });
+})();
+
 // Admin / HOD / PC sabka FMS dekhte hain, isliye inke liye FMS UI hamesha on
 // rehta hai — chahe wo khud kisi step ke doer na hon.
 function isFmsManager() {

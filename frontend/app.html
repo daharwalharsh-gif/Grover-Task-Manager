@@ -25,6 +25,8 @@
 })();
 </script>
 <link rel="stylesheet" href="/css/app.css"/>
+<!-- Mobile/tablet adjustments — app.css ke BAAD, taaki chhoti screen par ye jeet jaye -->
+<link rel="stylesheet" href="/css/responsive.css"/>
 </head>
 <body>
 
@@ -113,9 +115,16 @@
 <!-- ══════════════════════════════════════
      MAIN
 ══════════════════════════════════════ -->
+<!-- Mobile par sidebar ke peeche ka parda — tap karne par drawer band -->
+<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeMobileSidebar()"></div>
+
 <div class="main" id="mainContent">
   <div class="topbar">
     <div style="display:flex;align-items:center">
+      <!-- Hamburger: sirf ≤768px par dikhta hai (css/responsive.css) -->
+      <button class="menu-toggle" id="menuToggle" onclick="toggleMobileSidebar()" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
       <div class="topbar-title" id="topbarTitle">Dashboard</div>
       <span class="viewonly-pill" title="You have view-only access">👁 View only</span>
     </div>

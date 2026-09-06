@@ -164,7 +164,10 @@
 }
 @media (max-width:560px), (max-height:620px){
   .mascot-panel{ display:none; }
-  .login-shell{ grid-template-rows:1fr; }
+  /* Mascot panel hatne ke baad column bhi ek hi hona chahiye — warna
+     (chhoti height + chaudi screen, jaise browser zoom par) form-panel
+     baayein column me chala jaata tha aur daayan aadha page khaali dikhta. */
+  .login-shell{ grid-template-columns:1fr; grid-template-rows:1fr; }
 }
 
 @media (prefers-reduced-motion:reduce){
