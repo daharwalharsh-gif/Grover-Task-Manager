@@ -1,7 +1,8 @@
 // Hostinger par seedha upload karne layak ZIP banao.
 //
-//   npm run zip                 → Desktop par Grover-Tex-Prints-Task-Manager.zip
-//   npm run zip -- --out D:\x   → kisi aur folder me
+//   npm run zip                 → project folder me Grover-Tex-Prints-Task-Manager.zip
+//                                 (VS Code me dikhti hai) + Desktop par copy
+//   npm run zip -- --out D:\x   → sirf us folder me
 //
 // Har baar chalane par taaza code se nayi ZIP banti hai (purani overwrite).
 // Andar kya jaata hai:
@@ -29,8 +30,12 @@ const ZIP_NAME = 'Grover-Tex-Prints-Task-Manager.zip';
 // ── CLI ──────────────────────────────────────────────
 const argv = process.argv.slice(2);
 const outIdx = argv.indexOf('--out');
-const OUT_DIR = outIdx >= 0 && argv[outIdx + 1] ? path.resolve(argv[outIdx + 1]) : path.resolve(ROOT, '..');
+const CUSTOM_OUT = outIdx >= 0 && argv[outIdx + 1] ? path.resolve(argv[outIdx + 1]) : null;
+const OUT_DIR = CUSTOM_OUT || ROOT;
 const OUT = path.join(OUT_DIR, ZIP_NAME);
+// Default me Desktop (project ka parent folder) par bhi ek copy — upload ke
+// liye wahan se uthana aasan hai. --out diya ho to sirf wahi.
+const DESKTOP_COPY = CUSTOM_OUT ? null : path.join(path.resolve(ROOT, '..'), ZIP_NAME);
 
 // ── Kya jaata hai, kya nahi ──────────────────────────
 const INCLUDE_TOP = ['backend', 'data', 'frontend', 'brand.json', 'package.json', 'package-lock.json', 'README.md', '.env.example'];
@@ -246,6 +251,7 @@ function writeZip(entries, outFile) {
   writeZip(entries, OUT);
   const kb = Math.round(fs.statSync(OUT).size / 1024);
   console.log(`  ✅ ${entries.length} files → ${OUT}  (${kb} KB)`);
+  if (DESKTOP_COPY) { fs.copyFileSync(OUT, DESKTOP_COPY); console.log(`     Copy      → ${DESKTOP_COPY}`); }
   console.log('     Andar: .env (Hostinger template) + HOSTINGER-SETUP.txt');
   console.log('     Upload → Extract → .env me DB_NAME/DB_USER/DB_PASSWORD/APP_URL bharo → npm run db:setup');
 })();
