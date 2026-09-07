@@ -63,7 +63,11 @@ app.get('/api/health', async (req, res) => {
   if (!('db' in req.query)) return res.json({ status: 'ok' });
   try {
     const [[r]] = await db.query('SELECT VERSION() AS v, DATABASE() AS d');
-    res.json({ status: 'ok', db: { connected: true, version: r.v, database: r.d } });
+    // tables ki ginti — deploy ke baad ek hi URL se pata chal jaata hai ki
+    // schema chadh chuka hai ya nahi (0 = auto-setup abhi nahi chala).
+    const [[t]] = await db.query(
+      'SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE()');
+    res.json({ status: 'ok', db: { connected: true, version: r.v, database: r.d, tables: Number(t.n) } });
   } catch (e) {
     console.error('Health DB ping failed:', e.message);
     // Sirf error CODE bahar jaata hai (message/host/user nahi) — itna kaafi
@@ -4180,6 +4184,15 @@ app.use((err, req, res, next) => {
 if (!IS_SERVERLESS) {
   app.listen(PORT, async () => {
     console.log(`\n  ✦ ${BRAND.short}: http://localhost:${PORT}\n`);
+    // Naye database par tables + pehla admin khud bana do. Pehle se lagi hui
+    // migrations skip ho jaati hain, isliye har restart par ye lagbhag muft
+    // hai. Fail ho to sirf log — app chalti rehti hai. Band karna ho:
+    // env me AUTO_SETUP=false.
+    try {
+      await require('../data/auto-setup').autoSetup(console);
+    } catch (e) {
+      console.error('  ❌ Auto-setup crash:', e.message);
+    }
     // Boot par ek baar DB ko chhoo kar dekh lo. Fail ho to app girti NAHI —
     // static pages/health chalte rehte hain — bas log me saaf likha aata hai
     // ki .env ke DB_* / DATABASE_URL dekhne hain (Hostinger par sabse aam galti).
