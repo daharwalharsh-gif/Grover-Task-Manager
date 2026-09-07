@@ -1414,9 +1414,11 @@ function renderDashTable(tasks, type) {
         ${t.status === 'completed' ? `
           <span style="font-size:11px;color:var(--success);font-weight:600">✅ Completed</span>
         ` : t.waiting_approval==1 ? `
-          <span style="font-size:11px;color:var(--warning);font-weight:600">⏳ Waiting Approval</span>
+          <!-- Approval ka intezaar — Done button JAAN-BOOJH KAR nahi hai.
+               Pehle yahan bhi Done dikhta tha, aur usse dobara dabane par
+               task approval ko laanghkar seedha complete ho jaata tha. -->
+          <span class="status-badge revised" title="Manager ke approve karne ka intezaar hai">⏳ Waiting for Approval</span>
           ${remarkBtn(t, t.type, 'left')}
-          ${(!isPC || t.type==='checklist') ? dashDoneBtn(t) : ''}
         ` : `
           ${remarkBtn(t, t.type, 'left')}
           ${(!isPC || t.type==='checklist') ? dashDoneBtn(t) : ''}
@@ -1439,12 +1441,12 @@ function dashProofBtns(t) {
   const done = t.status === 'completed';
   if (!t.has_proof) {
     if (done) return '';
-    return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',false)" title="Upload proof photo (optional)">📷</button>`;
+    return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',false)" title="Proof lagao — photo ya PDF (zaroori nahi)">📎</button>`;
   }
   // Photo lag chuki hai — ab camera ki jagah 👁 (dekhne ke liye)
-  const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-right:3px" onclick="viewProof(${t.id},'${t.type}','${desc}')" title="View proof photo">👁️</button>`;
+  const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-right:3px" onclick="viewProof(${t.id},'${t.type}','${desc}')" title="Proof dekho">👁️</button>`;
   const replace = (done || t.proof_replaced == 1) ? ''
-    : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',true)" title="Replace photo (allowed only once)">♻️</button>`;
+    : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',true)" title="Proof badlo (sirf ek baar)">♻️</button>`;
   return view + replace;
 }
 // Dashboard: photo buttons ke baad video buttons (dono slot alag hain)
@@ -1452,8 +1454,15 @@ function dashProofAllBtns(t) {
   return dashProofBtns(t) + proofVideoBtns(t, t.type, 'right', true);
 }
 function dashDoneBtn(t) {
-  // Proof photo abhi optional hai — Done bina photo ke bhi chalega
-  return `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','dashboard','${t.type}')">Done</button>`;
+  // Proof optional hai — Done bina attachment ke bhi chalega. Modal wahi
+  // poochta hai (openDoneModal), isliye yahan seedha updateStatus nahi.
+  return `<button class="action-btn done" style="margin-left:3px" onclick="openDoneModal(${t.id},'${t.type}','dashboard')">Done</button>`;
+}
+
+// "Approval ka intezaar" wala chip — dashboard, All Tasks ke action column
+// aur status column, teeno jagah ek jaisa dikhe isliye ek hi jagah likha hai.
+function waitingChip() {
+  return `<span class="status-badge revised" style="white-space:nowrap" title="Doer ne Done kar diya hai — ab manager ke approve karne ka intezaar hai">⏳ Waiting for Approval</span>`;
 }
 
 // User-typed text ko innerHTML me daalne se pehle escape karo (XSS se bachav)
@@ -1921,12 +1930,12 @@ function renderTasksTable() {
     const desc = (t.description||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     if (!t.has_proof) {
       if (t.status === 'completed') return '';
-      return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',false)" title="Upload proof photo (optional)">📷</button>`;
+      return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',false)" title="Proof lagao — photo ya PDF (zaroori nahi)">📎</button>`;
     }
     // Photo lag chuki hai — ab camera ki jagah 👁 (dekhne ke liye)
-    const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-left:3px" onclick="viewProof(${t.id},'${tasksType}','${desc}')" title="View proof photo">👁️</button>`;
+    const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-left:3px" onclick="viewProof(${t.id},'${tasksType}','${desc}')" title="Proof dekho">👁️</button>`;
     const replace = (t.status === 'completed' || t.proof_replaced == 1) ? ''
-      : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',true)" title="Replace photo (allowed only once)">♻️</button>`;
+      : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',true)" title="Proof badlo (sirf ek baar)">♻️</button>`;
     return view + replace;
   }
   // Photo buttons ke baad video buttons — dono slot alag hain
@@ -1935,7 +1944,7 @@ function renderTasksTable() {
   }
   // Proof photo abhi optional hai — Done bina photo ke bhi chalega
   function doneBtn(t) {
-    return `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${tasksType}')">Done</button>`;
+    return `<button class="action-btn done" style="margin-left:3px" onclick="openDoneModal(${t.id},'${tasksType}','alltasks')">Done</button>`;
   }
 
   function actionBtnsFor(t) {
@@ -1949,13 +1958,13 @@ function renderTasksTable() {
       ${remarkBtn(t, tasksType, 'left')}
       ${!isCompleted && !isWaiting ? doneBtn(t) : ''}
       ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
-      ${isWaiting ? `<span style="font-size:11px;color:var(--warning);font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+      ${isWaiting ? waitingChip() : ''}
     ` : (ME.role==='pc') ? `
       <button class="action-btn" style="background:var(--accent);color:var(--accent-foreground);padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
       ${proofAllBtns(t)}
       ${remarkBtn(t, tasksType, 'left')}
       ${isChecklist && !isCompleted && !isWaiting ? doneBtn(t) : ''}
-      ${isWaiting ? `<span style="font-size:11px;color:var(--warning);font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+      ${isWaiting ? waitingChip() : ''}
     ` : `
       <button class="action-btn" style="background:var(--accent);color:var(--accent-foreground);padding:4px 7px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
       ${proofAllBtns(t)}
@@ -1964,9 +1973,7 @@ function renderTasksTable() {
         ${doneBtn(t)}
         ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
       ` : ''}
-      ${isWaiting ? `
-        ${doneBtn(t)}
-        <span style="font-size:11px;color:var(--warning);font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
+      ${isWaiting ? waitingChip() : ''}
     `;
   }
 
@@ -1978,7 +1985,13 @@ function renderTasksTable() {
       <td>${t.assignedByName||''}</td>
       <td style="white-space:nowrap">${fmtDate(t.due_date||'')||'—'}</td>
       <td style="color:var(--muted-foreground)">${t.remarks||'—'}</td>
-      <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+      <!-- Status column: approval ka intezaar hone par asli status ab bhi
+           'pending' hai (task Pending tab me hi rehta hai, jab tak admin
+           approve na kare) — isliye badge ki jagah saaf-saaf yahi likh dete
+           hain, warna doer ko lagta hai uska Done gum ho gaya. -->
+      <td>${t.waiting_approval == 1
+        ? waitingChip()
+        : `<span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span>`}</td>
     </tr>`;
   }
 
@@ -2055,11 +2068,96 @@ function toggleBlock(header) { header.nextElementSibling.classList.toggle('open'
 // ══════════════════════════════════════════════════════
 async function updateStatus(id, status, from, type) {
   const r = await api(`/api/tasks/${id}/status`,'PUT',{status, type: type || dashType});
-  if (r.needsApproval) {
-    showToast('✅ Approval request sent to your manager!');
+  // Server mana kar sakta hai (jaise task pehle se approval me ho) — us haal me
+  // chup mat raho, warna user ko lagta hai click hua hi nahi.
+  if (r && r.error) { showToast(r.error, 'error'); }
+  else if (r && r.needsApproval) {
+    showToast('⏳ Approval request manager ko bhej di gayi hai!');
   }
   if (from==='dashboard') loadDashboard(); else loadAllTasks();
   loadApprovalBadge();
+}
+
+// ══════════════════════════════════════════════════════
+// DONE MODAL — proof attach karne ka mauka (optional)
+// ══════════════════════════════════════════════════════
+// Done seedha nahi hota; pehle ye chhota modal khulta hai jisme photo ya PDF
+// laga sakte hain. Lagana ZAROORI NAHI — "Bina file ke Done" wahi kaam karta
+// hai jo pehle seedha Done karta tha.
+let _doneCtx = { id: null, type: null, from: null, dataUrl: null, fileName: '' };
+
+function openDoneModal(id, type, from) {
+  _doneCtx = { id, type, from, dataUrl: null, fileName: '' };
+  document.getElementById('doneFileInput').value = '';
+  document.getElementById('doneFileName').textContent = 'Koi file nahi chuni';
+  document.getElementById('doneFileName').style.color = 'var(--muted-foreground)';
+  document.getElementById('doneErr').style.display = 'none';
+  document.getElementById('doneSubmitBtn').disabled = false;
+  document.getElementById('doneModal').classList.add('open');
+}
+
+async function onDoneFilePicked(input) {
+  const file = input.files && input.files[0];
+  const label = document.getElementById('doneFileName');
+  const err = document.getElementById('doneErr');
+  err.style.display = 'none';
+  if (!file) { _doneCtx.dataUrl = null; label.textContent = 'Koi file nahi chuni'; return; }
+
+  const isPdf = file.type === 'application/pdf';
+  const isImg = file.type.startsWith('image/');
+  if (!isPdf && !isImg) {
+    err.textContent = 'Sirf photo (JPG/PNG) ya PDF chalega';
+    err.style.display = 'block';
+    input.value = ''; _doneCtx.dataUrl = null;
+    label.textContent = 'Koi file nahi chuni';
+    return;
+  }
+  try {
+    // Photo compress hoti hai (12MB ki photo bhi ~200KB reh jaati hai);
+    // PDF jaisi hai waisi jaati hai, isliye uspar size ki seema lagti hai.
+    if (isImg) {
+      _doneCtx.dataUrl = await compressImage(file);
+    } else {
+      if (file.size > 5.5 * 1024 * 1024) throw new Error('PDF bahut badi hai (5MB tak chalegi)');
+      _doneCtx.dataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onerror = () => reject(new Error('File padhi nahi ja saki'));
+        r.onload = () => resolve(r.result);
+        r.readAsDataURL(file);
+      });
+    }
+    _doneCtx.fileName = file.name;
+    label.textContent = `${isPdf ? '📄' : '🖼'} ${file.name}`;
+    label.style.color = 'var(--success)';
+  } catch (e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+    input.value = ''; _doneCtx.dataUrl = null;
+    label.textContent = 'Koi file nahi chuni';
+  }
+}
+
+// withFile = false hone par file chuni hui ho to bhi nahi bhejte (user ne
+// "Bina file ke" dabaya hai).
+async function submitDone(withFile) {
+  const { id, type, from, dataUrl } = _doneCtx;
+  const btn = document.getElementById('doneSubmitBtn');
+  const err = document.getElementById('doneErr');
+  btn.disabled = true;
+
+  if (withFile && dataUrl) {
+    showToast('⏳ File upload ho rahi hai…');
+    const up = await api(`/api/tasks/${id}/proof`, 'POST', { type, image: dataUrl });
+    if (up.error) {
+      // Upload fail hua to task ko Done NAHI karte — warna proof ke bharose
+      // rehne wale ko lagta hai file lag gayi.
+      err.textContent = up.error; err.style.display = 'block';
+      btn.disabled = false;
+      return;
+    }
+  }
+  closeModal('doneModal');
+  await updateStatus(id, 'completed', from, type);
 }
 
 async function deleteTask(id, type) {
@@ -3308,8 +3406,10 @@ function _proofInput() {
   if (!el) {
     el = document.createElement('input');
     el.type = 'file';
-    el.accept = 'image/*';
-    el.capture = 'environment'; // mobile par seedha camera khulega
+    // PDF bhi — bill/challan/report ki photo kheenchne se behtar hai seedha
+    // file lagana. `capture` jaan-boojh kar nahi lagaya: usse mobile par sirf
+    // camera khulta hai aur PDF chunne ka raasta hi band ho jaata hai.
+    el.accept = 'image/*,application/pdf';
     el.id = '_proofFileInput';
     el.style.display = 'none';
     document.body.appendChild(el);
@@ -3324,11 +3424,24 @@ function uploadProof(taskId, type, isReplace) {
   input.onchange = async () => {
     const file = input.files[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) { showToast('Only image files can be uploaded','error'); return; }
-    if (isReplace && !await confirmDialog('The photo can only be replaced ONCE. After this it cannot be changed again.', {title:'Replace Photo', okText:'Replace'})) return;
-    showToast('⏳ Compressing photo…');
+    const isPdf = file.type === 'application/pdf';
+    if (!isPdf && !file.type.startsWith('image/')) { showToast('Sirf photo ya PDF chalegi','error'); return; }
+    if (isReplace && !await confirmDialog('Proof sirf EK BAAR badla ja sakta hai. Iske baad dobara nahi badlega.', {title:'Replace Proof', okText:'Replace'})) return;
+    showToast(isPdf ? '⏳ PDF padh rahe hain…' : '⏳ Photo compress ho rahi hai…');
     let dataUrl;
-    try { dataUrl = await compressImage(file); }
+    try {
+      if (isPdf) {
+        if (file.size > 5.5 * 1024 * 1024) throw new Error('PDF bahut badi hai (5MB tak chalegi)');
+        dataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onerror = () => reject(new Error('File padhi nahi ja saki'));
+          r.onload = () => resolve(r.result);
+          r.readAsDataURL(file);
+        });
+      } else {
+        dataUrl = await compressImage(file);
+      }
+    }
     catch (e) { showToast(e.message,'error'); return; }
     showToast('⏳ Uploading…');
     const r = await api(`/api/tasks/${taskId}/proof`,'POST',{ type, image: dataUrl });
@@ -3345,9 +3458,12 @@ function uploadProof(taskId, type, isReplace) {
 async function viewProof(taskId, type, taskDesc) {
   document.getElementById('proofViewMeta').textContent = taskDesc || '';
   const img = document.getElementById('proofViewImg');
+  const pdf = document.getElementById('proofViewPdf');
   const loading = document.getElementById('proofViewLoading');
   const dl = document.getElementById('proofViewDownload');
   img.style.display = 'none';
+  pdf.style.display = 'none';
+  pdf.removeAttribute('src');
   loading.style.display = 'block';
   loading.textContent = 'Loading…';
   dl.style.display = 'none';
@@ -3355,11 +3471,22 @@ async function viewProof(taskId, type, taskDesc) {
 
   const r = await api(`/api/tasks/${taskId}/proof?type=${type}`);
   if (r.error) { loading.textContent = r.error; return; }
-  img.src = r.image;
-  img.style.display = 'inline-block';
+
+  // Proof photo bhi ho sakti hai aur PDF bhi — data-URL ke prefix se pehchan
+  // lete hain. PDF ko <img> me daalne par sirf toota hua icon dikhta.
+  const isPdf = /^data:application\/pdf/.test(r.image || '');
+  const safeName = (taskDesc || 'task').replace(/[^\w\s-]/g, '').trim().slice(0, 40) || 'task';
+  if (isPdf) {
+    pdf.src = r.image;
+    pdf.style.display = '';
+    dl.download = `proof_${safeName}.pdf`;
+  } else {
+    img.src = r.image;
+    img.style.display = 'inline-block';
+    dl.download = `proof_${safeName}.jpg`;
+  }
   loading.style.display = 'none';
   dl.href = r.image;
-  dl.download = `proof_${(taskDesc||'task').replace(/[^\w\s-]/g,'').trim().slice(0,40)}.jpg`;
   dl.style.display = '';
 }
 
@@ -3874,7 +4001,7 @@ async function openMISDetail(userId, userName) {
         // Time bhi dikhao (kis waqt done hua) + proof photo ka link
         const time = t.completed_at_ts ? t.completed_at_ts.split(' ').slice(1).join(' ') : ''; // "02:24 PM"
         const pdesc = (t.description||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-        const proof = (t.has_proof && !isTaskActionDisabled('proofPhoto')) ? ` <span onclick="viewProof(${t.id},'${misType}','${pdesc}')" title="View proof photo" style="cursor:pointer">👁️</span>` : '';
+        const proof = (t.has_proof && !isTaskActionDisabled('proofPhoto')) ? ` <span onclick="viewProof(${t.id},'${misType}','${pdesc}')" title="Proof dekho" style="cursor:pointer">👁️</span>` : '';
         // Video sirf Admin/HR ko — baaki kisi ko play icon bhi nahi
         const canVideo = ME && (ME.role === 'admin' || isHR()) && !isTaskActionDisabled('proofVideo');
         const vproof = (t.has_video && canVideo) ? ` <span onclick="viewProofVideo(${t.id},'${misType}','${pdesc}')" title="Play proof video" style="cursor:pointer">▶️</span>` : '';

@@ -1657,12 +1657,19 @@ app.post('/api/tasks/:id/proof', requireAuth, async (req, res) => {
     if (!isAdmin && task.assigned_to !== req.session.userId) return res.status(403).json({ error: 'Not allowed' });
     if (task.has_proof && task.proof_replaced) return res.status(400).json({ error: 'Photo has already been replaced once — it cannot be changed again' });
 
+    // Photo ya PDF — dono ek hi column (longtext) me data-URL ki tarah jaate
+    // hain. PDF isliye kyunki bahut kaam ke proof bill/challan/report hote hain,
+    // jinki photo kheenchna bekaar hai.
     const dataUrl = String(image);
-    if (!/^data:image\/(jpeg|jpg|png|webp);base64,/.test(dataUrl)) {
-      return res.status(400).json({ error: 'Invalid image format' });
+    if (!/^data:(image\/(jpeg|jpg|png|webp)|application\/pdf);base64,/.test(dataUrl)) {
+      return res.status(400).json({ error: 'Sirf photo (JPG/PNG/WEBP) ya PDF chalega' });
     }
-    // ~8MB base64 se bada mat lo — frontend compress karke bhejta hai, ye sirf safety guard hai
-    if (dataUrl.length > 8 * 1024 * 1024) return res.status(413).json({ error: 'Image is too large' });
+    // ~8MB base64 se bada mat lo. Photo frontend compress karke bhejta hai;
+    // PDF jaisa aata hai waisa jaata hai, isliye seema wahi par lagti hai.
+    // (express.json ki limit 12mb hai — ye usse pehle saaf error deta hai.)
+    if (dataUrl.length > 8 * 1024 * 1024) {
+      return res.status(413).json({ error: 'File bahut badi hai (6MB tak chalegi)' });
+    }
 
     const isReplace = !!task.has_proof;
     await db.query(`UPDATE ${table} SET proof_image=?, proof_replaced=? WHERE id=?`,
@@ -1867,9 +1874,22 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
     const task = rows[0];
     if (!isAdmin && !isPC && task.assigned_to !== uid) return res.status(403).json({ error: 'Not allowed' });
-    // NOTE: proof-of-work photo abhi OPTIONAL hai — bina photo ke bhi Done ho sakta hai.
-    // Mandatory karna ho to yahan task.proof_image ka check wapas laga dena.
+    // NOTE: proof-of-work photo/PDF abhi OPTIONAL hai — bina attachment ke bhi
+    // Done ho sakta hai. Mandatory karna ho to yahan task.proof_image ka check
+    // wapas laga dena.
+
+    // ── Task pehle se approval ka intezaar kar raha hai ──
+    // Pehle yahan role ka check NAHI tha: doer dobara "Done" dabata to pending
+    // approval DELETE hokar task seedha completed ho jaata — yaani approval ka
+    // matlab hi khatam, aur admin ki list se request gayab. Ab doer ko saaf
+    // mana kar dete hain; sirf admin/PC hi yahan se aage badha sakte hain
+    // (unke liye ye jaan-boojh kar rakha gaya override hai).
     if (status === 'completed' && task.waiting_approval) {
+      if (!isAdmin && !isPC) {
+        return res.status(400).json({
+          error: 'Ye task pehle se approval ke intezaar me hai. Manager ke approve karne tak kuch karna nahi hai.',
+        });
+      }
       await db.query(`DELETE FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, type]);
       if (type === 'checklist') await db.query(`UPDATE ${table} SET status='completed',completed_at=NOW() WHERE id=?`, [req.params.id]);
       else await db.query(`UPDATE ${table} SET status='completed',waiting_approval=0,completed_at=NOW() WHERE id=?`, [req.params.id]);
