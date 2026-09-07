@@ -76,6 +76,10 @@ function readEnv(file) {
 }
 function buildProdEnv() {
   const local = readEnv(path.join(ROOT, '.env'));
+  // .env.hostinger (gitignored) me Hostinger ke ASLI DB values rakho — wo
+  // yahan sab par upar aa jaate hain, aur ZIP ki .env seedha chalne layak
+  // banti hai (kuch bharna nahi padta).
+  const host = readEnv(path.join(ROOT, '.env.hostinger'));
   const secret = crypto.randomBytes(32).toString('hex');
   const overrides = {
     DB_KIND: 'mysql',
@@ -89,7 +93,12 @@ function buildProdEnv() {
     ADMIN_NAME: local.ADMIN_NAME || 'Admin',
     ADMIN_EMAIL: local.ADMIN_EMAIL || '',
     ADMIN_PASSWORD: local.ADMIN_PASSWORD || '',
+    ...host,
+    // PORT Hostinger khud deta hai; SESSION_SECRET hamesha fresh random
+    PORT: '',
+    SESSION_SECRET: host.SESSION_SECRET || secret,
   };
+  const hostFilled = !!(host.DB_NAME && host.DB_USER && host.DB_PASSWORD);
   const example = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8').split(/\r?\n/);
   const lines = example.map((line) => {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
@@ -98,9 +107,14 @@ function buildProdEnv() {
   });
   const banner = [
     '# ══════════════════════════════════════════════════════════',
-    '#  HOSTINGER PRODUCTION CONFIG — sirf ye 4 lines bharni hain:',
-    '#    DB_NAME, DB_USER, DB_PASSWORD  (hPanel → Databases → Management)',
-    '#    APP_URL                        (https://aapka-domain.com)',
+    '#  HOSTINGER PRODUCTION CONFIG',
+    hostFilled
+      ? `#  DB values .env.hostinger se bhare hue hain (${host.DB_NAME}). Kuch`
+      : '#  Sirf ye 4 lines bharni hain:',
+    hostFilled
+      ? '#  badalna ho to sirf APP_URL (https://aapka-domain.com) dekh lo.'
+      : '#    DB_NAME, DB_USER, DB_PASSWORD  (hPanel → Databases → Management)',
+    hostFilled ? '#' : '#    APP_URL                        (https://aapka-domain.com)',
     '#  DB_HOST=localhost tab chalega jab app Hostinger par hi ho.',
     '#  SESSION_SECRET pehle se random bhara hai — badalne ki zarurat nahi.',
     `#  (ZIP bani: ${new Date().toISOString()})`,
@@ -132,10 +146,13 @@ const SETUP_TXT = `GROVER TEX PRINTS — TASK MANAGER  |  HOSTINGER SETUP
    - Entry file:     backend/server.js
    - PORT env mat bharo — Hostinger khud deta hai.
 
-4) PEHLI BAAR: TABLES + ADMIN
-   Hostinger SSH / terminal me app folder me jaakar:
-     npm run db:check      (connection test)
-     npm run db:setup      (tables banao + admin banao)
+4) PEHLI BAAR: TABLES + ADMIN  (do me se koi EK tareeka)
+   A) phpMyAdmin (sabse aasan, SSH nahi chahiye):
+      hPanel → Databases → phpMyAdmin → apna database chuno → Import →
+      is ZIP ki hostinger-setup.sql → Go.  (29 tables + admin ban jaata hai)
+   B) SSH / terminal me app folder me jaakar:
+        npm run db:check      (connection test)
+        npm run db:setup      (tables banao + admin banao)
    Admin login = .env ke ADMIN_EMAIL / ADMIN_PASSWORD.
    Login ke baad Profile se password badal lo.
 
@@ -242,6 +259,9 @@ function writeZip(entries, outFile) {
   const now = new Date();
   entries.push({ name: '.env', data: Buffer.from(buildProdEnv(), 'utf8'), mtime: now });
   entries.push({ name: 'HOSTINGER-SETUP.txt', data: Buffer.from(SETUP_TXT, 'utf8'), mtime: now });
+  // phpMyAdmin import wali SQL — SSH na ho to tables isi se banti hain
+  const { buildSetupSql } = require('./make-setup-sql');
+  entries.push({ name: 'hostinger-setup.sql', data: Buffer.from(buildSetupSql().sql, 'utf8'), mtime: now });
 
   // Safety: local secrets kabhi na jaayein
   const bad = entries.filter(e => /(^|\/)(credentials\.json|\.env\.local)$/.test(e.name) || e.name.includes('node_modules/'));

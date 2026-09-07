@@ -21,6 +21,8 @@ Login: `.env` ka `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 | `npm run db:migrate` | `data/migrations/mysql/*.sql` order me chalata hai (dobara chalane par skip) |
 | `npm run db:seed-admin` | `.env` ke ADMIN_EMAIL/PASSWORD se admin banata hai (ya password reset) |
 | `npm run db:setup` | Upar dono ek saath |
+| `npm run db:sql` | `hostinger-setup.sql` banata hai — phpMyAdmin me Import karo, tables + admin ban jaate hain (SSH nahi chahiye) |
+| `npm run zip` | Hostinger upload ZIP (`Grover-Tex-Prints-Task-Manager.zip`) — `.env.hostinger` ke values ZIP ki `.env` me bhar deta hai |
 | `npm run dev` | nodemon ke saath (auto-restart) |
 
 Health: `GET /api/health` → app zinda; `GET /api/health?db=1` → DB bhi juda hai ya nahi.
@@ -49,7 +51,9 @@ Health: `GET /api/health` → app zinda; `GET /api/health?db=1` → DB bhi juda 
   `backend/../.env` se khud padh leti hai.
 
 ### 3. Pehli baar schema + admin
-Hostinger ke SSH/terminal se (ya laptop se Remote MySQL whitelist karke):
+**Aasan tareeka (phpMyAdmin):** hPanel → Databases → phpMyAdmin → database chuno → Import → ZIP wali `hostinger-setup.sql` → Go.
+
+**Ya SSH/terminal se** (ya laptop se Remote MySQL whitelist karke):
 ```bash
 npm run db:check
 npm run db:setup

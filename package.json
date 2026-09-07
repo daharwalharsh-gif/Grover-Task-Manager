@@ -10,7 +10,8 @@
     "db:migrate": "node data/scripts/migrate.js",
     "db:seed-admin": "node data/scripts/seed-admin.js",
     "db:setup": "npm run db:migrate && npm run db:seed-admin",
-    "zip": "node data/scripts/make-zip.js"
+    "zip": "node data/scripts/make-zip.js",
+    "db:sql": "node data/scripts/make-setup-sql.js"
   },
   "engines": {
     "node": ">=20"
