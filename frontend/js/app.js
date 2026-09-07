@@ -2688,8 +2688,14 @@ const _usersMap = {};
 
 function renderUsersTable(users) {
   const tbody = document.getElementById('usersTbody');
+  // Password column: server ye field sirf admin ko bhejta hai, isliye yahan
+  // bhi sirf admin ke liye column dikhate hain — warna baaki roles ko ek
+  // khaali column dikhta rehta.
+  const showPw = ME && ME.role === 'admin';
+  document.querySelectorAll('.pw-col').forEach(el => { el.hidden = !showPw; });
+  const cols = showPw ? 8 : 7;
   if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted-foreground)">No users found</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;padding:24px;color:var(--muted-foreground)">No users found</td></tr>`;
     _syncUserSelection();
     return;
   }
@@ -2703,6 +2709,9 @@ function renderUsersTable(users) {
         : `<input type="checkbox" class="user-cb" value="${u.id}" onclick="_syncUserSelection()" style="accent-color:var(--primary);cursor:pointer"/>`}</td>
       <td style="font-weight:600">${u.name}</td>
       <td style="color:var(--muted-foreground)">${u.email}</td>
+      <td class="pw-col"${showPw ? '' : ' hidden'}>${u.password_plain
+        ? `<span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--muted);padding:2px 8px;border-radius:6px;user-select:all" title="Select karke copy kar lo">${escapeHtml(u.password_plain)}</span>`
+        : `<span style="color:var(--muted-foreground);font-size:11px" title="Ye password is feature se pehle set hua tha — Set Password se naya dal do">—</span>`}</td>
       <td style="color:var(--muted-foreground)">${u.phone||'—'}</td>
       <td style="color:var(--muted-foreground)">${u.department||'—'}${u.staff_type==='factory'?' <span style="font-size:10px;background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:1px 6px;border-radius:8px;font-weight:600">🏭 Factory</span>':''}</td>
       <td><span class="role-badge ${u.role}">${roleLabel(u.role)}</span>${Number(u.view_only)===1?' <span class="status-badge revised" title="Can view everything, cannot make changes">👁 View only</span>':''}</td>

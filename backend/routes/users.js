@@ -18,8 +18,14 @@ module.exports = function registerUsersRoutes(app, ctx) {
     try {
       const seg = segmentFilter(req, '');
       const params = seg.param ? [seg.param] : [];
+      // password_plain SIRF admin ko jaata hai. Ye list har logged-in user
+      // kholta hai (task assign karne ke dropdown isi se bhare jaate hain),
+      // isliye column ko role ke hisaab se query me hi jodte hain — response
+      // se baad me hatane ka tareeka ek din koi bhool jaayega.
+      const isAdmin = req.session.role === 'admin';
+      const pwCol = isAdmin ? ',password_plain' : '';
       const [rows] = await db.query(
-        `SELECT id,name,email,notification_email,role,view_only,phone,department,week_off,extra_off,staff_type FROM users WHERE 1=1${seg.clause} ORDER BY role DESC,name ASC`, params);
+        `SELECT id,name,email,notification_email,role,view_only,phone,department,week_off,extra_off,staff_type${pwCol} FROM users WHERE 1=1${seg.clause} ORDER BY role DESC,name ASC`, params);
       res.json(rows);
     } catch (err) { console.error(err); res.status(500).json({ error: 'Server error. Please try again.' }); }
   });

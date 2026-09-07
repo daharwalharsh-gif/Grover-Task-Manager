@@ -4,10 +4,18 @@
 //   npm run db:seed-users -- --live    → chalti hui app par, HTTPS API se
 //                                        (Hostinger — jahan DB seedha nahi milta)
 //   npm run db:seed-users -- --dry     → sirf dikhao, banao mat
+//   npm run db:seed-users -- --update  → jo pehle se hain unka naam/phone/
+//                                        department/staff_type bhi list jaisa
+//                                        kar do (PASSWORD KABHI NAHI chhedta)
 //
 // DOBARA CHALANA SAFE HAI: jo email pehle se maujood hai wo chhod diya jaata
 // hai — na password badalta hai, na naam/department. Isliye list me naya banda
 // jodkar script phir se chala dena hi kaafi hai.
+//
+// --update tab chahiye jab list me kuch theek kiya ho (department badla, ya
+// staff_type factory se office). Email se milaan hota hai, isliye KISI KA
+// EMAIL badla ho to wo naya banda gina jaayega — purana haath se hataana
+// padega.
 //
 // Password dono shakl me jaata hai: bcrypt hash (login isi se) aur padha ja
 // sakne wala (admin DB me dekh sake) — lib/passwords.js wahi niyam.
@@ -20,6 +28,7 @@ const LIST = path.join(ROOT, 'data', 'seed-users.json');
 const argv = process.argv.slice(2);
 const LIVE = argv.includes('--live');
 const DRY = argv.includes('--dry');
+const UPDATE = argv.includes('--update');
 
 function loadList() {
   const raw = JSON.parse(fs.readFileSync(LIST, 'utf8'));
@@ -61,9 +70,17 @@ function badEmails(users) {
 async function seedViaDb(users) {
   const db = require('../db');
   const { hashPassword, plainPassword } = require('../../backend/lib/passwords');
-  let added = 0, skipped = 0;
+  let added = 0, skipped = 0, updated = 0;
   for (const u of users) {
     const [ex] = await db.query('SELECT id FROM users WHERE LOWER(email)=LOWER(?)', [u.email]);
+    if (ex.length && UPDATE) {
+      // password aur session_version ko haath nahi lagate — sirf profile.
+      await db.query(
+        'UPDATE users SET name=?,role=?,phone=?,department=?,week_off=?,staff_type=? WHERE id=?',
+        [u.name, u.role, u.phone, u.department, u.week_off, u.staff_type, ex[0].id]);
+      console.log(`  ♻️  ${u.email} (update)`);
+      updated++; continue;
+    }
     if (ex.length) { console.log(`  ⏭️  ${u.email} (pehle se hai)`); skipped++; continue; }
     const [r] = await db.query(
       `INSERT INTO users (name,email,password,password_plain,role,phone,department,week_off,extra_off,staff_type)
@@ -74,7 +91,7 @@ async function seedViaDb(users) {
     added++;
   }
   await db.end();
-  return { added, skipped };
+  return { added, skipped, updated };
 }
 
 // ── Live app (HTTPS) ─────────────────────────────────
@@ -97,15 +114,40 @@ async function seedViaApi(users) {
   const { token } = await login.json();
   const headers = { 'Content-Type': 'application/json', Cookie: cookie, Authorization: `Bearer ${token}` };
 
-  let added = 0, skipped = 0, failed = 0;
+  // --update ke liye maujooda users ki id chahiye (email -> id).
+  let byEmail = new Map();
+  if (UPDATE) {
+    const lr = await fetch(`${base}/api/users`, { headers });
+    const list = await lr.json();
+    byEmail = new Map(list.map(x => [String(x.email).toLowerCase(), x.id]));
+  }
+
+  let added = 0, skipped = 0, failed = 0, updated = 0;
   for (const u of users) {
+    const existingId = byEmail.get(u.email);
+    if (existingId && UPDATE) {
+      // password field bheja hi nahi ja raha — route bina password wala
+      // UPDATE chalata hai, isliye kisi ka login nahi tootta.
+      const r = await fetch(`${base}/api/users/${existingId}`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({
+          name: u.name, email: u.email, role: u.role, view_only: 0,
+          phone: u.phone, department: u.department,
+          week_off: u.week_off, extra_off: u.extra_off, staff_type: u.staff_type,
+        }),
+      });
+      const b = await r.json().catch(() => ({}));
+      if (r.ok && b.success) { console.log(`  ♻️  ${u.email} (update)`); updated++; }
+      else { console.log(`  ❌ ${u.email} — ${b.error || r.status}`); failed++; }
+      continue;
+    }
     const r = await fetch(`${base}/api/users`, { method: 'POST', headers, body: JSON.stringify(u) });
     const body = await r.json().catch(() => ({}));
     if (r.ok && body.success) { console.log(`  ✅ ${u.name} — ${u.email}`); added++; }
     else if (/already exists/i.test(body.error || '')) { console.log(`  ⏭️  ${u.email} (pehle se hai)`); skipped++; }
     else { console.log(`  ❌ ${u.email} — ${body.error || r.status}`); failed++; }
   }
-  return { added, skipped, failed };
+  return { added, skipped, failed, updated };
 }
 
 (async () => {
@@ -120,5 +162,5 @@ async function seedViaApi(users) {
   if (DRY) { users.forEach(u => console.log(`  · ${String(u.sr).padStart(2)} ${u.name.padEnd(16)} ${u.email.padEnd(42)} ${u.department}`)); return; }
 
   const res = LIVE ? await seedViaApi(users) : await seedViaDb(users);
-  console.log(`\n  Bane: ${res.added}   Pehle se the: ${res.skipped}${res.failed ? `   Fail: ${res.failed}` : ''}`);
+  console.log(`\n  Bane: ${res.added}   Update: ${res.updated || 0}   Pehle se the: ${res.skipped}${res.failed ? `   Fail: ${res.failed}` : ''}`);
 })().catch(e => { console.error('seed-users fail:', e.message); process.exit(1); });

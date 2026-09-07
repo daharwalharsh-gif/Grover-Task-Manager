@@ -350,7 +350,12 @@
       <table>
         <thead><tr>
           <th style="width:36px"><input type="checkbox" id="userSelectAll" onclick="toggleAllUsers(this)" title="Select all" style="accent-color:var(--primary);cursor:pointer"/></th>
-          <th>Name</th><th>Email</th><th>Phone</th><th>Department</th><th>Role</th><th>Action</th>
+          <th>Name</th><th>Email</th>
+          <!-- Password column sirf admin ko dikhta hai — renderUsersTable()
+               ise ME.role dekh kar hide karti hai, aur server bhi ye field
+               sirf admin ko bhejta hai. -->
+          <th class="pw-col">Password</th>
+          <th>Phone</th><th>Department</th><th>Role</th><th>Action</th>
         </tr></thead>
         <tbody id="usersTbody"></tbody>
       </table>
