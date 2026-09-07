@@ -23,3 +23,5 @@ apps_script_proof_upload.gs
 # Hostinger upload ZIP (npm run zip) — repo me nahi
 dist/
 *.zip
+# Hostinger import .env (npm run env:hostinger) — asli secrets, repo me nahi
+*.env

@@ -11,7 +11,8 @@
     "db:seed-admin": "node data/scripts/seed-admin.js",
     "db:setup": "npm run db:migrate && npm run db:seed-admin",
     "zip": "node data/scripts/make-zip.js",
-    "db:sql": "node data/scripts/make-setup-sql.js"
+    "db:sql": "node data/scripts/make-setup-sql.js",
+    "env:hostinger": "node data/scripts/make-env.js"
   },
   "engines": {
     "node": ">=20"
