@@ -103,9 +103,28 @@ async function seedAdmin(conn, log) {
     log('  ⏭️  ADMIN_EMAIL / ADMIN_PASSWORD nahi hain — admin seed skip');
     return false;
   }
-  // Pehle se hai to kuch mat karo. (Password badalna ho to db:seed-admin.)
-  const [existing] = await conn.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
-  if (existing.length) return false;
+  const [existing] = await conn.query(
+    'SELECT id, password, password_plain FROM users WHERE email = ? LIMIT 1', [email]);
+
+  if (existing.length) {
+    // Admin pehle se hai — password NAHI badalte (warna har restart par
+    // session_version badhta aur sab logout ho jaate).
+    //
+    // Ek cheez phir bhi theek karni hai: jo account password_plain wale
+    // feature se PEHLE bana tha, uska ye column khaali pada hai. Us par
+    // admin ko DB me sirf bcrypt hash dikhta hai aur lagta hai feature
+    // chal hi nahi raha. Bharne se pehle bcrypt se milaan kar lete hain —
+    // agar .env ka ADMIN_PASSWORD asli password nahi hai to kuch nahi
+    // likhte, warna DB galat password dikhane lagta jo iska ulta hi hai.
+    const row = existing[0];
+    const plainOff = String(process.env.STORE_PLAIN_PASSWORD || '').toLowerCase() === 'false';
+    if (!plainOff && !row.password_plain && bcrypt.compareSync(password, row.password)) {
+      await conn.query('UPDATE users SET password_plain = ? WHERE id = ?',
+        [String(password).slice(0, 255), row.id]);
+      log(`  ✅ Admin ka password ab DB me padha ja sakta hai: ${email}`);
+    }
+    return false;
+  }
 
   // password_plain: admin ko DB me padha ja sakne wala password chahiye.
   // Column 005 migration me banta hai; STORE_PLAIN_PASSWORD=false ho to null.
