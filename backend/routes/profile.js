@@ -6,6 +6,8 @@
 // kram na badle (wildcard :id routes ka kram maayne rakhta hai).
 
 const bcrypt = require('bcryptjs');
+// Hash + padha ja sakne wala password, dono ek saath — lib/passwords.js dekho.
+const { hashPassword, plainPassword } = require('../lib/passwords');
 
 module.exports = function registerProfileRoutes(app, ctx) {
   const { db, requireAuth } = ctx;
@@ -17,7 +19,7 @@ module.exports = function registerProfileRoutes(app, ctx) {
       if (currentPassword) {
         const [rows] = await db.query('SELECT password FROM users WHERE id=?', [uid]);
         if (!bcrypt.compareSync(currentPassword, rows[0].password)) return res.status(400).json({ error: 'Current password is incorrect' });
-        if (newPassword) await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=?,password=? WHERE id=?', [name,email,notification_email||'',phone||null,bcrypt.hashSync(newPassword,10),uid]);
+        if (newPassword) await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=?,password=?,password_plain=? WHERE id=?', [name,email,notification_email||'',phone||null,hashPassword(newPassword),plainPassword(newPassword),uid]);
         else await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=? WHERE id=?', [name,email,notification_email||'',phone||null,uid]);
       } else {
         await db.query('UPDATE users SET name=?,email=?,notification_email=?,phone=? WHERE id=?', [name,email,notification_email||'',phone||null,uid]);

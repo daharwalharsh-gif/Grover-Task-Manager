@@ -1,0 +1,62 @@
+{
+  "_readme": [
+    "Grover Tex Prints ki staff list — `npm run db:seed-users` isse users banata hai.",
+    "",
+    "Kaise chalti hai:  npm run db:seed-users            (local .env wale DB par)",
+    "                   npm run db:seed-users -- --live  (Hostinger par, HTTPS API se)",
+    "",
+    "Dobara chalane par jo email pehle se hai wo SKIP ho jaata hai — kisi ka",
+    "password ya data overwrite nahi hota. Isliye ise jitni baar chahe chalao.",
+    "",
+    "week_off = '0' matlab Sunday chhutti. (App waise bhi Sunday ko poori",
+    "company ki chhutti maanti hai — lib/workdays.js — par yahan likhne se UI",
+    "me Sunday tick dikhta hai.)",
+    "",
+    "Naya banda joine kare to bas neeche list me ek line jodo aur script",
+    "dobara chala do."
+  ],
+  "defaults": {
+    "password": "123456",
+    "role": "user",
+    "week_off": "0",
+    "staff_type": "office"
+  },
+  "users": [
+    { "sr": 1,  "name": "Sunil",         "department": "Accounts",          "phone": "8607215900", "email": "sunilgod.kumar31@gmail.com" },
+    { "sr": 2,  "name": "Sushil",        "department": "Admin",             "phone": "8398813214", "email": "gmsushil46@gmail.com" },
+    { "sr": 3,  "name": "Yogesh",        "department": "Admin",             "phone": "7056438000", "email": "yogeshbatra23@gmail.com" },
+    { "sr": 4,  "name": "Nitin",         "department": "Accounts",          "phone": "9896473759", "email": "grovertexprints004@gmail.com" },
+    { "sr": 5,  "name": "Param",         "department": "Accounts",          "phone": "9991468833", "email": "parmpannu72@gmail.com" },
+    { "sr": 6,  "name": "Neha",          "department": "E.A.",              "phone": "9991200633", "email": "grovertexprints10@gmail.com" },
+    { "sr": 7,  "name": "Manisha",       "department": "CRM",               "phone": "9992900255", "email": "groversales0@gmail.com" },
+    { "sr": 8,  "name": "Naina",         "department": "ERP",               "phone": "9991200632", "email": "pardhana1987@gmail.com" },
+    { "sr": 9,  "name": "Diksha",        "department": "Camera Operator",   "phone": "9034619407", "email": "diksha19407@gmail.com" },
+    { "sr": 10, "name": "Satish",        "department": "Store",             "phone": "9050139934", "email": "gullarsatish066@gmail.com" },
+
+    { "sr": 12, "name": "Munna Master",  "department": "Printing Dept.",    "phone": "9737446415", "email": "munnayadav231623@gmail.com",   "staff_type": "factory" },
+    { "sr": 13, "name": "Kuldeep Master","department": "Dyeing Dept.",      "phone": "9671154553", "email": "skuldeep4988@gmail.com",       "staff_type": "factory" },
+    { "sr": 14, "name": "Arun Master",   "department": "Finishing Dept.",   "phone": "9997679342", "email": "arunawashi26@gmail.com",       "staff_type": "factory" },
+    { "sr": 15, "name": "Satish Admin",  "department": "Admin",             "phone": "9467209645", "email": "neelamuk21@gmail.com" },
+    { "sr": 16, "name": "Uday",          "department": "Dyeing Dept.",      "phone": "7359191845", "email": "uday14786@gmail.com",          "staff_type": "factory" },
+    { "sr": 17, "name": "Kirpal",        "department": "Dyeing Dept.",      "phone": "9813998413", "email": "kripalsingh7528@gmail.com",    "staff_type": "factory" },
+    { "sr": 18, "name": "Neeraj",        "department": "Polar Raising Dept.","phone": "8434837665","email": "rajukumar8434837665@gmail.com","staff_type": "factory" },
+    { "sr": 19, "name": "Rakesh Tiwari", "department": "Washing Dept.",     "phone": "9050286318", "email": "rakeshtiwari9050@gmail.com",   "staff_type": "factory" },
+    { "sr": 20, "name": "Sandeep",       "department": "Pitching Dept.",    "phone": "8708045063", "email": "sushisushil13214@gmail.com",   "staff_type": "factory" },
+    { "sr": 21, "name": "Anil Giri",     "department": "Pitching Dept.",    "phone": "9991073571", "email": "anilgiri9050@gmail.com",       "staff_type": "factory" },
+    { "sr": 22, "name": "Krishna",       "department": "Printing Dept.",    "phone": "8295791351", "email": "shreekrishnaji12@gmail.com",   "staff_type": "factory" },
+    { "sr": 23, "name": "Shambhu",       "department": "Raising Dept.",     "phone": "9518082486", "email": "panditshambhu040@gmail.com",   "staff_type": "factory" },
+    { "sr": 24, "name": "Surjeet",       "department": "Raising Dept.",     "phone": "7206924754", "email": "surjeetkumar7123@gmail.com",   "staff_type": "factory" },
+    { "sr": 25, "name": "Toofani",       "department": "Brushing Dept.",    "phone": "7054484190", "email": "t46085306@gmail.com",          "staff_type": "factory" },
+    { "sr": 26, "name": "Rathee ji",     "department": "Electric Dept.",    "phone": "9992629464", "email": "rathinarrender75@gmail.com",   "staff_type": "factory" },
+    { "sr": 27, "name": "Swami ji",      "department": "Maintenance Dept.", "phone": "9911607604", "email": "braliyasuresh@gmail.com",      "staff_type": "factory" },
+    { "sr": 28, "name": "Balinder",      "department": "ETP Dept.",         "phone": "8570827035", "email": "azadkhanchi95@gmail.com",      "staff_type": "factory" },
+    { "sr": 29, "name": "Bijender",      "department": "Electric Dept.",    "phone": "9992677604", "email": "bejinder.rcm1@gmail.com",      "staff_type": "factory" },
+    { "sr": 30, "name": "Sahil",         "department": "Printing Dept.",    "phone": "6283982626", "email": "sahilpandey91154@gmail.com",   "staff_type": "factory" },
+    { "sr": 31, "name": "Pradeep",       "department": "Rexine Dept.",      "phone": "9729610359", "email": "pkaushik2742gohana@gmail.com", "staff_type": "factory" },
+    { "sr": 32, "name": "Pankaj",        "department": "Rexine Dept.",      "phone": "9044118759", "email": "chauhananjusingh3@gmail.com",  "staff_type": "factory" },
+    { "sr": 33, "name": "Kamal",         "department": "Waterjet Dept.",    "phone": "7878813972", "email": "kamaljat3109@gmail.com",       "staff_type": "factory" },
+    { "sr": 34, "name": "Ramavatar",     "department": "Waterjet Dept.",    "phone": "7627092407", "email": "ytarr45@gmail.com",            "staff_type": "factory" },
+
+    { "sr": 38, "name": "Bablu",         "department": "Stunter Supervisor","phone": "8780331247", "email": "upendernayakupendernayak5409@gmail.com", "staff_type": "factory" }
+  ]
+}

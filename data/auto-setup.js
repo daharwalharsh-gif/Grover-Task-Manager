@@ -103,10 +103,14 @@ async function seedAdmin(conn, log) {
   const [existing] = await conn.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
   if (existing.length) return false;
 
+  // password_plain: admin ko DB me padha ja sakne wala password chahiye.
+  // Column 005 migration me banta hai; STORE_PLAIN_PASSWORD=false ho to null.
   const hash = bcrypt.hashSync(password, 10);
+  const plain = String(process.env.STORE_PLAIN_PASSWORD || '').toLowerCase() === 'false'
+    ? null : String(password).slice(0, 255);
   const [r] = await conn.query(
-    'INSERT INTO users (name, email, password, role, department, staff_type) VALUES (?,?,?,?,?,?)',
-    [name, email, hash, 'admin', 'Management', 'office']);
+    'INSERT INTO users (name, email, password, password_plain, role, department, staff_type) VALUES (?,?,?,?,?,?,?)',
+    [name, email, hash, plain, 'admin', 'Management', 'office']);
   log(`  ✅ Pehla admin bana: ${email} (id ${r.insertId})`);
   if (password.length < 8) log('  ⚠️  Admin password chhota hai — login karke badal lo.');
   return true;

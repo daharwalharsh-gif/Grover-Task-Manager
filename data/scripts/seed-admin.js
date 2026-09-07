@@ -38,12 +38,15 @@ if (at < 1 || at !== email.lastIndexOf('@') || !email.slice(at).includes('.') ||
 
 (async () => {
   const hash = bcrypt.hashSync(password, 10);
+  // password_plain — admin ko DB me padha ja sakne wala password dikhta rahe.
+  const plain = String(process.env.STORE_PLAIN_PASSWORD || '').toLowerCase() === 'false'
+    ? null : String(password).slice(0, 255);
   const [existing] = await db.query('SELECT id FROM users WHERE email=?', [email]);
 
   if (existing.length) {
     await db.query(
-      'UPDATE users SET password=?, role=?, session_version=session_version+1 WHERE email=?',
-      [hash, 'admin', email]);
+      'UPDATE users SET password=?, password_plain=?, role=?, session_version=session_version+1 WHERE email=?',
+      [hash, plain, 'admin', email]);
     console.log(`  ♻️  Maujooda admin ka password reset: ${email}`);
     console.log('     (session_version badha diya — purane login sab logout ho jayenge)');
   } else {

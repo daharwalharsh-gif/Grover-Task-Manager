@@ -6,6 +6,10 @@
 // kram na badle (wildcard :id routes ka kram maayne rakhta hai).
 
 const bcrypt = require('bcryptjs');
+// Password do column me jaata hai — hash (login ke liye) aur padha ja sakne
+// wala (admin ke dekhne ke liye). Dono ek saath, warna DB me dono alag-alag
+// reh jaate hain. Details lib/passwords.js me.
+const { hashPassword, plainPassword } = require('../lib/passwords');
 
 module.exports = function registerUsersRoutes(app, ctx) {
   const { db, requireAuth, requireAdmin, segmentFilter, authCacheDrop } = ctx;
@@ -30,8 +34,8 @@ module.exports = function registerUsersRoutes(app, ctx) {
       // jaate hain aur login me se ek hi milta hai.
       const [ex] = await db.query('SELECT id FROM users WHERE LOWER(email)=LOWER(?)', [email]);
       if (ex[0]) return res.status(400).json({ error: 'Email already exists' });
-      await db.query('INSERT INTO users (name,email,notification_email,password,role,view_only,phone,department,week_off,extra_off,staff_type) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-        [name, email, notification_email||'', bcrypt.hashSync(password,10), role||'user', viewOnly, phone||null, department||'', week_off||'', extra_off||'', staffType]);
+      await db.query('INSERT INTO users (name,email,notification_email,password,password_plain,role,view_only,phone,department,week_off,extra_off,staff_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        [name, email, notification_email||'', hashPassword(password), plainPassword(password), role||'user', viewOnly, phone||null, department||'', week_off||'', extra_off||'', staffType]);
       res.json({ success: true });
     } catch (err) { console.error(err); res.status(500).json({ error: 'Server error. Please try again.' }); }
   });
@@ -46,8 +50,8 @@ module.exports = function registerUsersRoutes(app, ctx) {
       if (viewOnly && String(req.params.id) === String(req.session.userId)) {
         return res.status(400).json({ error: 'You cannot set yourself to view-only — you would not be able to change it back.' });
       }
-      if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,view_only=?,password=?,phone=?,department=?,week_off=?,extra_off=?,staff_type=?,session_version=session_version+1 WHERE id=?',
-        [name,email,notification_email||'',role,viewOnly,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',staffType,req.params.id]);
+      if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,view_only=?,password=?,password_plain=?,phone=?,department=?,week_off=?,extra_off=?,staff_type=?,session_version=session_version+1 WHERE id=?',
+        [name,email,notification_email||'',role,viewOnly,hashPassword(password),plainPassword(password),phone||null,department||'',week_off||'',extra_off||'',staffType,req.params.id]);
       else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,view_only=?,phone=?,department=?,week_off=?,extra_off=?,staff_type=? WHERE id=?',
         [name,email,notification_email||'',role,viewOnly,phone||null,department||'',week_off||'',extra_off||'',staffType,req.params.id]);
       // requireAuth session_version aur view_only ko kuch second cache karta hai.
@@ -62,8 +66,8 @@ module.exports = function registerUsersRoutes(app, ctx) {
     try {
       const { password } = req.body;
       if (!password || password.length < 4) return res.status(400).json({ error: 'Password must be at least 4 characters' });
-      await db.query('UPDATE users SET password=?,session_version=session_version+1 WHERE id=?',
-        [bcrypt.hashSync(password,10), req.params.id]);
+      await db.query('UPDATE users SET password=?,password_plain=?,session_version=session_version+1 WHERE id=?',
+        [hashPassword(password), plainPassword(password), req.params.id]);
       authCacheDrop(req.params.id);   // purane token turant band ho jayein
       res.json({ success: true });
     } catch (err) { console.error(err); res.status(500).json({ error: 'Server error. Please try again.' }); }
@@ -87,8 +91,8 @@ module.exports = function registerUsersRoutes(app, ctx) {
         if (!u.name || !u.email || !u.password) { errors.push(`${u.email||'?'}: missing fields`); continue; }
         const [ex] = await db.query('SELECT id FROM users WHERE LOWER(email)=LOWER(?)', [u.email]);
         if (ex[0]) { skipped++; continue; }
-        await db.query('INSERT INTO users (name,email,password,role,phone,department,week_off,extra_off) VALUES (?,?,?,?,?,?,?,?)',
-          [u.name, u.email, bcrypt.hashSync(u.password,10), u.role||'user', u.phone||null, u.department||'', u.week_off||'', u.extra_off||'']);
+        await db.query('INSERT INTO users (name,email,password,password_plain,role,phone,department,week_off,extra_off) VALUES (?,?,?,?,?,?,?,?,?)',
+          [u.name, u.email, hashPassword(u.password), plainPassword(u.password), u.role||'user', u.phone||null, u.department||'', u.week_off||'', u.extra_off||'']);
         added++;
       }
       res.json({ success: true, added, skipped, errors });

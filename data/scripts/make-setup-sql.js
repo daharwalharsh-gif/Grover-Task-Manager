@@ -64,10 +64,14 @@ function buildSetupSql() {
   const name = (env.ADMIN_NAME || '').trim() || 'Admin';
   if (email && password) {
     const hash = bcrypt.hashSync(password, 10);
-    out.push(`-- ───────── pehla admin: ${email} (password bcrypt hash me) ─────────`);
-    out.push(`INSERT INTO users (name, email, password, role, department, staff_type)
-VALUES (${sqlStr(name)}, ${sqlStr(email)}, ${sqlStr(hash)}, 'admin', 'Management', 'office')
-ON DUPLICATE KEY UPDATE password = VALUES(password), role = 'admin', session_version = session_version + 1;`);
+    // password_plain — login hash se hota hai; ye column sirf isliye hai ki
+    // admin DB me password padh sake (005_password_plain.sql).
+    const plain = String(process.env.STORE_PLAIN_PASSWORD || '').toLowerCase() === 'false'
+      ? null : password.slice(0, 255);
+    out.push(`-- ───────── pehla admin: ${email} (password bcrypt hash + padhne layak copy) ─────────`);
+    out.push(`INSERT INTO users (name, email, password, password_plain, role, department, staff_type)
+VALUES (${sqlStr(name)}, ${sqlStr(email)}, ${sqlStr(hash)}, ${plain === null ? 'NULL' : sqlStr(plain)}, 'admin', 'Management', 'office')
+ON DUPLICATE KEY UPDATE password = VALUES(password), password_plain = VALUES(password_plain), role = 'admin', session_version = session_version + 1;`);
   } else {
     out.push('-- ADMIN_EMAIL / ADMIN_PASSWORD .env.hostinger me nahi the — admin baad me `npm run db:seed-admin` se banao.');
   }
