@@ -70,11 +70,11 @@ function renderDbmTable() {
   const rows = filtered.map(t => {
     const isOverdue = t.status === 'pending' && t.due_date && t.due_date < today;
     return `<tr>
-      <td style="font-size:13px">${t.description||'—'}</td>
-      <td style="white-space:nowrap;font-size:13px">${t.assignedToName||'—'}</td>
+      <td style="font-size:13px">${escapeHtml(t.description||'—')}</td>
+      <td style="white-space:nowrap;font-size:13px">${escapeHtml(t.assignedToName||'—')}</td>
       <td style="white-space:nowrap;font-size:12px;color:var(--muted-foreground)">${fmtDate(t.assigned_on||'')||'—'}</td>
       <td style="white-space:nowrap;font-size:12px">${fmtDate(t.due_date||'')||'—'}${isOverdue?' <span style="color:var(--destructive);font-weight:600;font-size:10px">⏰ Overdue</span>':''}</td>
-      <td style="font-size:12px;color:var(--muted-foreground)">${t.remarks||'—'}</td>
+      <td style="font-size:12px;color:var(--muted-foreground)">${escapeHtml(t.remarks||'—')}</td>
       <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
     </tr>`;
   }).join('');
@@ -1405,8 +1405,8 @@ function renderDashTable(tasks, type) {
   tbody.innerHTML = allPending.map(t=>`
     <tr>
       <td style="white-space:nowrap">${typeBadge(t)}</td>
-      <td>${t.description||t.desc}</td>
-      <td>${(isAdmin||isPC)?t.assignedToName:t.assignedByName}</td>
+      <td>${escapeHtml(t.description||t.desc||'')}</td>
+      <td>${escapeHtml((isAdmin||isPC)?t.assignedToName:t.assignedByName)}</td>
       <td style="white-space:nowrap">${fmtDate(t.due_date||t.date)}</td>
       <td>${t.type!=='checklist' ? `<span class="priority-badge ${t.priority||'low'}">${t.priority||'low'}</span>` : '—'}</td>
       <td style="white-space:nowrap">
@@ -1417,7 +1417,7 @@ function renderDashTable(tasks, type) {
           <!-- Approval ka intezaar — Done button JAAN-BOOJH KAR nahi hai.
                Pehle yahan bhi Done dikhta tha, aur usse dobara dabane par
                task approval ko laanghkar seedha complete ho jaata tha. -->
-          <span class="status-badge revised" title="Manager ke approve karne ka intezaar hai">⏳ Waiting for Approval</span>
+          <span class="status-badge revised" title="Waiting for the manager to approve">⏳ Waiting for Approval</span>
           ${remarkBtn(t, t.type, 'left')}
         ` : `
           ${remarkBtn(t, t.type, 'left')}
@@ -1441,12 +1441,12 @@ function dashProofBtns(t) {
   const done = t.status === 'completed';
   if (!t.has_proof) {
     if (done) return '';
-    return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',false)" title="Proof lagao — photo ya PDF (zaroori nahi)">📎</button>`;
+    return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',false)" title="Attach proof — photo or PDF (optional)">📎</button>`;
   }
   // Photo lag chuki hai — ab camera ki jagah 👁 (dekhne ke liye)
-  const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-right:3px" onclick="viewProof(${t.id},'${t.type}','${desc}')" title="Proof dekho">👁️</button>`;
+  const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-right:3px" onclick="viewProof(${t.id},'${t.type}','${desc}')" title="View proof">👁️</button>`;
   const replace = (done || t.proof_replaced == 1) ? ''
-    : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',true)" title="Proof badlo (sirf ek baar)">♻️</button>`;
+    : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',true)" title="Replace proof (allowed only once)">♻️</button>`;
   return view + replace;
 }
 // Dashboard: photo buttons ke baad video buttons (dono slot alag hain)
@@ -1456,13 +1456,17 @@ function dashProofAllBtns(t) {
 function dashDoneBtn(t) {
   // Proof optional hai — Done bina attachment ke bhi chalega. Modal wahi
   // poochta hai (openDoneModal), isliye yahan seedha updateStatus nahi.
-  return `<button class="action-btn done" style="margin-left:3px" onclick="openDoneModal(${t.id},'${t.type}','dashboard')">Done</button>`;
+  // desc onclick ke andar jaata hai — quotes escape kiye bina ek apostrophe
+  // wala task pura button tod deta hai.
+  const d = String(t.description || t.desc || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  const hasRemark = !!(t.doer_remark && String(t.doer_remark).trim());
+  return `<button class="action-btn done" style="margin-left:3px" onclick="openDoneModal(${t.id},'${t.type}','dashboard','${d}',${hasRemark})">Done</button>`;
 }
 
 // "Approval ka intezaar" wala chip — dashboard, All Tasks ke action column
 // aur status column, teeno jagah ek jaisa dikhe isliye ek hi jagah likha hai.
 function waitingChip() {
-  return `<span class="status-badge revised" style="white-space:nowrap" title="Doer ne Done kar diya hai — ab manager ke approve karne ka intezaar hai">⏳ Waiting for Approval</span>`;
+  return `<span class="status-badge revised" style="white-space:nowrap" title="The doer marked this done — waiting for the manager to approve">⏳ Waiting for Approval</span>`;
 }
 
 // User-typed text ko innerHTML me daalne se pehle escape karo (XSS se bachav)
@@ -1930,12 +1934,12 @@ function renderTasksTable() {
     const desc = (t.description||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     if (!t.has_proof) {
       if (t.status === 'completed') return '';
-      return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',false)" title="Proof lagao — photo ya PDF (zaroori nahi)">📎</button>`;
+      return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',false)" title="Attach proof — photo or PDF (optional)">📎</button>`;
     }
     // Photo lag chuki hai — ab camera ki jagah 👁 (dekhne ke liye)
-    const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-left:3px" onclick="viewProof(${t.id},'${tasksType}','${desc}')" title="Proof dekho">👁️</button>`;
+    const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-left:3px" onclick="viewProof(${t.id},'${tasksType}','${desc}')" title="View proof">👁️</button>`;
     const replace = (t.status === 'completed' || t.proof_replaced == 1) ? ''
-      : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',true)" title="Proof badlo (sirf ek baar)">♻️</button>`;
+      : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',true)" title="Replace proof (allowed only once)">♻️</button>`;
     return view + replace;
   }
   // Photo buttons ke baad video buttons — dono slot alag hain
@@ -1944,7 +1948,9 @@ function renderTasksTable() {
   }
   // Proof photo abhi optional hai — Done bina photo ke bhi chalega
   function doneBtn(t) {
-    return `<button class="action-btn done" style="margin-left:3px" onclick="openDoneModal(${t.id},'${tasksType}','alltasks')">Done</button>`;
+    const d = String(t.description || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const hasRemark = !!(t.doer_remark && String(t.doer_remark).trim());
+    return `<button class="action-btn done" style="margin-left:3px" onclick="openDoneModal(${t.id},'${tasksType}','alltasks','${d}',${hasRemark})">Done</button>`;
   }
 
   function actionBtnsFor(t) {
@@ -1980,11 +1986,11 @@ function renderTasksTable() {
   function rowFor(t) {
     return `<tr>
       <td style="white-space:nowrap">${actionBtnsFor(t)}</td>
-      <td>${t.description||''}</td>
-      <td>${t.assignedToName||''}</td>
-      <td>${t.assignedByName||''}</td>
+      <td>${escapeHtml(t.description||'')}</td>
+      <td>${escapeHtml(t.assignedToName||'')}</td>
+      <td>${escapeHtml(t.assignedByName||'')}</td>
       <td style="white-space:nowrap">${fmtDate(t.due_date||'')||'—'}</td>
-      <td style="color:var(--muted-foreground)">${t.remarks||'—'}</td>
+      <td style="color:var(--muted-foreground)">${escapeHtml(t.remarks||'—')}</td>
       <!-- Status column: approval ka intezaar hone par asli status ab bhi
            'pending' hai (task Pending tab me hi rehta hai, jab tak admin
            approve na kare) — isliye badge ki jagah saaf-saaf yahi likh dete
@@ -2017,7 +2023,7 @@ function renderTasksTable() {
         <div onclick="toggleDoerGroup('${g.id}')" style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;cursor:pointer;user-select:none">
           <div style="display:flex;align-items:center;gap:10px">
             <span style="color:var(--muted-foreground);font-size:11px;transition:transform .15s;display:inline-block;transform:rotate(${isOpen?90:0}deg)">▶</span>
-            <strong style="font-size:14px">${g.name}</strong>
+            <strong style="font-size:14px">${escapeHtml(g.name)}</strong>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
             <span class="status-badge" style="background:var(--muted);color:var(--muted-foreground)">${total} total</span>
@@ -2072,7 +2078,7 @@ async function updateStatus(id, status, from, type) {
   // chup mat raho, warna user ko lagta hai click hua hi nahi.
   if (r && r.error) { showToast(r.error, 'error'); }
   else if (r && r.needsApproval) {
-    showToast('⏳ Approval request manager ko bhej di gayi hai!');
+    showToast('⏳ Approval request sent to your manager');
   }
   if (from==='dashboard') loadDashboard(); else loadAllTasks();
   loadApprovalBadge();
@@ -2084,13 +2090,18 @@ async function updateStatus(id, status, from, type) {
 // Done seedha nahi hota; pehle ye chhota modal khulta hai jisme photo ya PDF
 // laga sakte hain. Lagana ZAROORI NAHI — "Bina file ke Done" wahi kaam karta
 // hai jo pehle seedha Done karta tha.
-let _doneCtx = { id: null, type: null, from: null, dataUrl: null, fileName: '' };
+let _doneCtx = { id: null, type: null, from: null, dataUrl: null, fileName: '', hasRemark: false };
 
-function openDoneModal(id, type, from) {
-  _doneCtx = { id, type, from, dataUrl: null, fileName: '' };
+function openDoneModal(id, type, from, desc, hasRemark) {
+  _doneCtx = { id, type, from, dataUrl: null, fileName: '', hasRemark: !!hasRemark };
+  document.getElementById('doneTaskDesc').textContent = desc || '';
   document.getElementById('doneFileInput').value = '';
-  document.getElementById('doneFileName').textContent = 'Koi file nahi chuni';
+  document.getElementById('doneFileName').textContent = 'No file chosen';
   document.getElementById('doneFileName').style.color = 'var(--muted-foreground)';
+  document.getElementById('doneRemark').value = '';
+  // Remark sirf ek baar likha ja sakta hai — pehle se ho to box dikhana
+  // bekaar hai, server waise bhi mana kar dega.
+  document.getElementById('doneRemarkWrap').hidden = !!hasRemark;
   document.getElementById('doneErr').style.display = 'none';
   document.getElementById('doneSubmitBtn').disabled = false;
   document.getElementById('doneModal').classList.add('open');
@@ -2101,15 +2112,15 @@ async function onDoneFilePicked(input) {
   const label = document.getElementById('doneFileName');
   const err = document.getElementById('doneErr');
   err.style.display = 'none';
-  if (!file) { _doneCtx.dataUrl = null; label.textContent = 'Koi file nahi chuni'; return; }
+  if (!file) { _doneCtx.dataUrl = null; label.textContent = 'No file chosen'; return; }
 
   const isPdf = file.type === 'application/pdf';
   const isImg = file.type.startsWith('image/');
   if (!isPdf && !isImg) {
-    err.textContent = 'Sirf photo (JPG/PNG) ya PDF chalega';
+    err.textContent = 'Only a photo (JPG/PNG) or a PDF can be attached';
     err.style.display = 'block';
     input.value = ''; _doneCtx.dataUrl = null;
-    label.textContent = 'Koi file nahi chuni';
+    label.textContent = 'No file chosen';
     return;
   }
   try {
@@ -2118,10 +2129,10 @@ async function onDoneFilePicked(input) {
     if (isImg) {
       _doneCtx.dataUrl = await compressImage(file);
     } else {
-      if (file.size > 5.5 * 1024 * 1024) throw new Error('PDF bahut badi hai (5MB tak chalegi)');
+      if (file.size > 5.5 * 1024 * 1024) throw new Error('This PDF is too large (5MB max)');
       _doneCtx.dataUrl = await new Promise((resolve, reject) => {
         const r = new FileReader();
-        r.onerror = () => reject(new Error('File padhi nahi ja saki'));
+        r.onerror = () => reject(new Error('The file could not be read'));
         r.onload = () => resolve(r.result);
         r.readAsDataURL(file);
       });
@@ -2133,20 +2144,23 @@ async function onDoneFilePicked(input) {
     err.textContent = e.message;
     err.style.display = 'block';
     input.value = ''; _doneCtx.dataUrl = null;
-    label.textContent = 'Koi file nahi chuni';
+    label.textContent = 'No file chosen';
   }
 }
 
-// withFile = false hone par file chuni hui ho to bhi nahi bhejte (user ne
-// "Bina file ke" dabaya hai).
-async function submitDone(withFile) {
-  const { id, type, from, dataUrl } = _doneCtx;
+// Kram maayne rakhta hai: pehle file, phir remark, aur SABSE AAKHIR me status.
+// Ulta karne par task complete ho jaata aur uske baad remark/file fail hoti —
+// tab user ke paas na proof hota na use badalne ka mauka (task done hone par
+// dono buttons chhup jaate hain).
+async function submitDone() {
+  const { id, type, from, dataUrl, hasRemark } = _doneCtx;
   const btn = document.getElementById('doneSubmitBtn');
   const err = document.getElementById('doneErr');
+  err.style.display = 'none';
   btn.disabled = true;
 
-  if (withFile && dataUrl) {
-    showToast('⏳ File upload ho rahi hai…');
+  if (dataUrl) {
+    showToast('⏳ Uploading proof…');
     const up = await api(`/api/tasks/${id}/proof`, 'POST', { type, image: dataUrl });
     if (up.error) {
       // Upload fail hua to task ko Done NAHI karte — warna proof ke bharose
@@ -2156,6 +2170,17 @@ async function submitDone(withFile) {
       return;
     }
   }
+
+  const remark = (document.getElementById('doneRemark').value || '').trim();
+  if (remark && !hasRemark) {
+    const rr = await api(`/api/tasks/${id}/remark?type=${type}`, 'POST', { remark });
+    if (rr.error) {
+      err.textContent = rr.error; err.style.display = 'block';
+      btn.disabled = false;
+      return;
+    }
+  }
+
   closeModal('doneModal');
   await updateStatus(id, 'completed', from, type);
 }
@@ -2349,7 +2374,7 @@ async function openDelegate() {
   document.getElementById('dDate').min=today;
   document.getElementById('dDate').disabled=false;
   const users = await api(withSeg('/api/users'));  // current view (office/factory) ke doers hi
-  const opts = users.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+  const opts = users.map(u=>`<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
   document.getElementById('dDoer').innerHTML='<option value="">Select Doer</option>'+opts;
   document.getElementById('delegateModal').classList.add('open');
 }
@@ -2400,7 +2425,7 @@ async function openChecklist() {
   document.getElementById('cEndDate').min=today;
   const users = await api(withSeg('/api/users'));  // current view (office/factory) ke doers hi
   document.getElementById('cDoer').innerHTML='<option value="">Select Employee</option>'+
-    users.map(u=>`<option value="${u.id}">${u.name}</option>`).join('');
+    users.map(u=>`<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
 
   ['cFrequency','cDate','cEndDate','cDesc'].forEach(id=>{
     document.getElementById(id).onchange = updateChecklistPreview;
@@ -2803,9 +2828,9 @@ function renderUsersTable(users) {
   tbody.innerHTML = users.map(u=>`
     <tr>
       <td>${String(u.id) === String(ME.id)
-        ? `<span title="Aap khud ko delete nahi kar sakte" style="color:var(--muted-foreground);font-size:11px">—</span>`
+        ? `<span title="You cannot delete yourself" style="color:var(--muted-foreground);font-size:11px">—</span>`
         : `<input type="checkbox" class="user-cb" value="${u.id}" onclick="_syncUserSelection()" style="accent-color:var(--primary);cursor:pointer"/>`}</td>
-      <td style="font-weight:600">${u.name}</td>
+      <td style="font-weight:600">${escapeHtml(u.name)}</td>
       <td style="color:var(--muted-foreground)">${u.email}</td>
       <td class="pw-col"${showPw ? '' : ' hidden'}>${u.password_plain
         ? `<span style="font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--muted);padding:2px 8px;border-radius:6px;user-select:all" title="Select karke copy kar lo">${escapeHtml(u.password_plain)}</span>`
@@ -3425,16 +3450,16 @@ function uploadProof(taskId, type, isReplace) {
     const file = input.files[0];
     if (!file) return;
     const isPdf = file.type === 'application/pdf';
-    if (!isPdf && !file.type.startsWith('image/')) { showToast('Sirf photo ya PDF chalegi','error'); return; }
-    if (isReplace && !await confirmDialog('Proof sirf EK BAAR badla ja sakta hai. Iske baad dobara nahi badlega.', {title:'Replace Proof', okText:'Replace'})) return;
-    showToast(isPdf ? '⏳ PDF padh rahe hain…' : '⏳ Photo compress ho rahi hai…');
+    if (!isPdf && !file.type.startsWith('image/')) { showToast('Only a photo or a PDF can be attached','error'); return; }
+    if (isReplace && !await confirmDialog('Proof can be replaced only ONCE. After this it cannot be changed again.', {title:'Replace Proof', okText:'Replace'})) return;
+    showToast(isPdf ? '⏳ Reading PDF…' : '⏳ Compressing photo…');
     let dataUrl;
     try {
       if (isPdf) {
-        if (file.size > 5.5 * 1024 * 1024) throw new Error('PDF bahut badi hai (5MB tak chalegi)');
+        if (file.size > 5.5 * 1024 * 1024) throw new Error('This PDF is too large (5MB max)');
         dataUrl = await new Promise((resolve, reject) => {
           const r = new FileReader();
-          r.onerror = () => reject(new Error('File padhi nahi ja saki'));
+          r.onerror = () => reject(new Error('The file could not be read'));
           r.onload = () => resolve(r.result);
           r.readAsDataURL(file);
         });
@@ -4001,7 +4026,7 @@ async function openMISDetail(userId, userName) {
         // Time bhi dikhao (kis waqt done hua) + proof photo ka link
         const time = t.completed_at_ts ? t.completed_at_ts.split(' ').slice(1).join(' ') : ''; // "02:24 PM"
         const pdesc = (t.description||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-        const proof = (t.has_proof && !isTaskActionDisabled('proofPhoto')) ? ` <span onclick="viewProof(${t.id},'${misType}','${pdesc}')" title="Proof dekho" style="cursor:pointer">👁️</span>` : '';
+        const proof = (t.has_proof && !isTaskActionDisabled('proofPhoto')) ? ` <span onclick="viewProof(${t.id},'${misType}','${pdesc}')" title="View proof" style="cursor:pointer">👁️</span>` : '';
         // Video sirf Admin/HR ko — baaki kisi ko play icon bhi nahi
         const canVideo = ME && (ME.role === 'admin' || isHR()) && !isTaskActionDisabled('proofVideo');
         const vproof = (t.has_video && canVideo) ? ` <span onclick="viewProofVideo(${t.id},'${misType}','${pdesc}')" title="Play proof video" style="cursor:pointer">▶️</span>` : '';
@@ -4016,7 +4041,7 @@ async function openMISDetail(userId, userName) {
     }
     return `
     <tr>
-      <td>${t.description}</td>
+      <td>${escapeHtml(t.description)}</td>
       <td style="color:var(--muted-foreground);font-size:12px">${t.assigned_by_name||'—'}</td>
       <td style="white-space:nowrap;font-size:12px">${fmtDate(t.due_date)}</td>
       <td><span class="status-badge ${t.status}">${t.status==='revised'?'Revision Requested':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
@@ -4362,7 +4387,7 @@ async function openAllMISDetail(userId, userName) {
 
   const makeTaskRows = (tasks, showRevised) => tasks.map(t => `
     <tr>
-      <td style="font-size:12px">${t.description}</td>
+      <td style="font-size:12px">${escapeHtml(t.description)}</td>
       <td style="color:var(--muted-foreground);font-size:11px;white-space:nowrap">${fmtDate(t.due_date)}</td>
       <td><span class="status-badge ${t.status}">${t.status === 'revised' ? 'Revision' : t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
       <td>${t.status==='pending' && t.due_date < today ? '<span style="font-size:10px;color:var(--destructive);font-weight:600">⏰ Overdue</span>' : ''}</td>
@@ -5687,7 +5712,7 @@ function buildStepBoxHTML(idx) {
   const s = fmsSteps[idx];
   const userOptions = fmsAllUsers.map(u=>`
     <div class="multi-select-item" data-uid="${u.id}" onclick="toggleFMSDoer(event,${idx},${u.id})">
-      <input type="checkbox" ${(s.doers||[]).map(d=>parseInt(d)).includes(parseInt(u.id))?'checked':''}/> ${u.name}
+      <input type="checkbox" ${(s.doers||[]).map(d=>parseInt(d)).includes(parseInt(u.id))?'checked':''}/> ${escapeHtml(u.name)}
     </div>`).join('');
 
   // Build header options for selects — MUST be declared BEFORE extraRowsHTML
@@ -7208,7 +7233,7 @@ async function openBulkDeleteModal() {
       : allUsers.filter(u => u.department === ME.department);
     document.getElementById('bdFromUser').innerHTML =
       '<option value="">-- Select user --</option>' +
-      eligible.map(u=>`<option value="${u.id}">${u.name} — ${u.email} (${u.department||u.role})</option>`).join('');
+      eligible.map(u=>`<option value="${u.id}">${escapeHtml(u.name)} — ${escapeHtml(u.email)} (${escapeHtml(u.department||u.role)})</option>`).join('');
     document.getElementById('bdStep1').style.display = 'block';
 
     // 12-month section: admin only
@@ -7224,7 +7249,7 @@ async function openBulkDeleteModal() {
       // Naam ke saath email dikhao taaki same naam wale (do "Rahul") alag pehchane ja saken.
       document.getElementById('bdYearUser').innerHTML =
         '<option value="">-- Select Employee --</option>' +
-        eligible.map(u=>`<option value="${u.id}" data-email="${u.email}">${u.name} — ${u.email}</option>`).join('');
+        eligible.map(u=>`<option value="${u.id}" data-email="${escapeHtml(u.email)}">${escapeHtml(u.name)} — ${escapeHtml(u.email)}</option>`).join('');
       document.getElementById('bdYearUserEmail').style.display = 'none';
       // Specific-task checkbox list reset (frequency+employee chunne par bharegi)
       const taskBox = document.getElementById('bdYearTaskBox');
@@ -7290,7 +7315,7 @@ async function onBdDateChange() {
     return `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--muted)">
       <input type="checkbox" class="bd-cb" data-idx="${i}" checked
         style="width:15px;height:15px;accent-color:var(--destructive);cursor:pointer;flex-shrink:0"/>
-      <span style="font-size:13px;flex:1">${t.description||'—'}</span>
+      <span style="font-size:13px;flex:1">${escapeHtml(t.description||'—')}</span>
       ${freqBadge}
       <span style="font-size:11px;background:${t.status==='pending'?'color-mix(in srgb,var(--destructive) 10%,transparent)':'color-mix(in srgb,var(--warning) 12%,transparent)'};color:${t.status==='pending'?'var(--destructive)':'var(--warning)'};padding:2px 7px;border-radius:8px;font-weight:600">${t.status}</span>
       <span style="font-size:11px;background:var(--accent);color:var(--accent-foreground);padding:2px 7px;border-radius:8px;font-weight:600">${t.taskType}</span>
@@ -7476,7 +7501,7 @@ async function openBulkEditModal() {
   // Naam + email dikhao taaki same naam wale (do "Rahul") alag pehchane ja saken.
   const allUsers = await api(withSeg('/api/users'));
   userSel.innerHTML = '<option value="">-- Select Employee --</option>' +
-    allUsers.map(u=>`<option value="${u.id}" data-email="${u.email}">${u.name} — ${u.email}</option>`).join('');
+    allUsers.map(u=>`<option value="${u.id}" data-email="${escapeHtml(u.email)}">${escapeHtml(u.name)} — ${escapeHtml(u.email)}</option>`).join('');
 
   document.getElementById('bulkEditModal').classList.add('open');
 }
@@ -7632,7 +7657,7 @@ async function openNewTransferModal() {
       : allUsers.filter(u => u.department === ME.department && u.id !== ME.id);
     document.getElementById('transferFromUser').innerHTML =
       '<option value="">-- Select user --</option>' +
-      eligible.map(u=>`<option value="${u.id}">${u.name} (${u.department||u.role})</option>`).join('');
+      eligible.map(u=>`<option value="${u.id}">${escapeHtml(u.name)} (${escapeHtml(u.department||u.role)})</option>`).join('');
     document.getElementById('transferStep1').style.display = 'block';
   } else {
     _transferFromUserId = ME.id;
@@ -7691,7 +7716,7 @@ async function onTransferDateChange() {
           ? `<span style="font-size:10px;background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:2px 7px;border-radius:10px;font-weight:600;border:1px solid color-mix(in srgb,var(--warning) 26%,transparent);white-space:nowrap">⏳ Sent</span>`
           : `<input type="checkbox" class="tr-date-cb" data-idx="${i}" checked
               style="width:15px;height:15px;accent-color:var(--chart-5);cursor:pointer;flex-shrink:0"/>`}
-        <span style="font-size:13px;flex:1">${t.description||'—'}</span>
+        <span style="font-size:13px;flex:1">${escapeHtml(t.description||'—')}</span>
         <span style="font-size:11px;background:var(--accent);color:var(--accent-foreground);padding:2px 7px;border-radius:8px;font-weight:600">${t.taskType}</span>
       </div>`;
     }).join('');
@@ -7703,7 +7728,7 @@ async function onTransferDateChange() {
     : allUsers.filter(u => u.id !== _transferFromUserId);
   document.getElementById('transferToUser').innerHTML =
     '<option value="">-- Select user --</option>' +
-    eligible.map(u=>`<option value="${u.id}">${u.name} (${u.department||u.role})</option>`).join('');
+    eligible.map(u=>`<option value="${u.id}">${escapeHtml(u.name)} (${escapeHtml(u.department||u.role)})</option>`).join('');
 }
 
 async function _doTransfer(tasks) {
@@ -7749,7 +7774,7 @@ async function loadTransferApprovals() {
       <thead><tr><th>Task</th><th>Type</th><th>From</th><th>To</th><th>Requested By</th><th>Date</th><th>Action</th></tr></thead>
       <tbody>
         ${transfers.map(t=>`<tr>
-          <td style="font-size:12px;max-width:180px">${t.description}</td>
+          <td style="font-size:12px;max-width:180px">${escapeHtml(t.description)}</td>
           <td><span class="status-badge pending" style="font-size:10px">${t.task_type}</span></td>
           <td style="font-weight:600">${t.fromUserName}</td>
           <td style="color:var(--chart-5);font-weight:600">${t.toUserName}</td>

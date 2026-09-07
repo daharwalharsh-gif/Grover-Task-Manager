@@ -33,7 +33,11 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 
 const MIG_DIR = path.join(__dirname, 'migrations', 'mysql');
-const LOCK_NAME = 'grover_tm_auto_setup';
+// MySQL/MariaDB me GET_LOCK ka naam POORE SERVER par ek hota hai, database ke
+// hisaab se nahi. Isliye naam me database ka naam bhi jodte hain — warna ek hi
+// server par do app (jaise staging aur live) ek doosre ka boot rok deti hain.
+// 64 char ki seema hai, isliye lamba naam kaat dete hain.
+const LOCK_PREFIX = 'grover_tm_setup:';
 const LOCK_WAIT_SEC = 30;
 
 function connConfig() {
@@ -133,8 +137,11 @@ async function autoSetup(logger = console) {
   }
 
   let locked = false;
+  let lockName = LOCK_PREFIX;
   try {
-    const [[l]] = await conn.query('SELECT GET_LOCK(?, ?) AS ok', [LOCK_NAME, LOCK_WAIT_SEC]);
+    const [[dbRow]] = await conn.query('SELECT DATABASE() AS d');
+    lockName = (LOCK_PREFIX + (dbRow.d || 'default')).slice(0, 64);
+    const [[l]] = await conn.query('SELECT GET_LOCK(?, ?) AS ok', [lockName, LOCK_WAIT_SEC]);
     locked = l && Number(l.ok) === 1;
     if (!locked) {
       log('  ⏭️  Auto-setup: doosra instance pehle se chala raha hai — skip');
@@ -150,7 +157,7 @@ async function autoSetup(logger = console) {
     logger.error(`  ❌ Auto-setup ruk gaya: ${e.code || ''} ${e.message}`);
     return { failed: true };
   } finally {
-    if (locked) await conn.query('SELECT RELEASE_LOCK(?)', [LOCK_NAME]).catch(() => {});
+    if (locked) await conn.query('SELECT RELEASE_LOCK(?)', [lockName]).catch(() => {});
     await conn.end().catch(() => {});
   }
 }

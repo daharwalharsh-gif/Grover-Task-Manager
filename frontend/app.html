@@ -1384,23 +1384,32 @@
   </div>
 </div>
 
-<!-- ══ DONE — proof lagane ka mauka (zaroori nahi) ══ -->
+<!-- ══ DONE — optional proof + remark ══ -->
 <div class="modal-overlay" id="doneModal">
-  <div class="modal" style="max-width:440px">
+  <div class="modal" style="max-width:460px">
     <button class="modal-close-x" onclick="closeModal('doneModal')" aria-label="Close">✕</button>
-    <h3>Task complete karein?</h3>
+    <h3>Mark task as done?</h3>
+    <div id="doneTaskDesc" style="font-size:13px;font-weight:600;margin-bottom:4px"></div>
     <div style="font-size:13px;color:var(--muted-foreground);margin-bottom:16px">
-      Chaho to proof laga do — photo ya PDF. <strong>Zaroori nahi hai.</strong>
+      You can attach proof and add a remark. <strong>Both are optional.</strong>
     </div>
     <div class="form-group">
-      <label for="doneFileInput">Proof (optional)</label>
+      <label for="doneFileInput">Proof — photo or PDF (optional)</label>
       <input type="file" id="doneFileInput" accept="image/*,application/pdf" onchange="onDoneFilePicked(this)"/>
-      <div id="doneFileName" style="font-size:12px;margin-top:6px;color:var(--muted-foreground)">Koi file nahi chuni</div>
+      <div id="doneFileName" style="font-size:12px;margin-top:6px;color:var(--muted-foreground)">No file chosen</div>
+    </div>
+    <!-- Remark wahi doer_remark column hai jo 📝 button use karta hai. Doer ise
+         sirf EK BAAR likh sakta hai (server par atomic check), isliye jab
+         pehle se remark ho to ye box hi nahi dikhta. -->
+    <div class="form-group" id="doneRemarkWrap">
+      <label for="doneRemark">Remark (optional)</label>
+      <textarea id="doneRemark" rows="2" maxlength="2000" placeholder="Anything the manager should know…"></textarea>
+      <div style="font-size:11px;color:var(--muted-foreground);margin-top:4px">Saved once — it cannot be edited later.</div>
     </div>
     <div id="doneErr" class="alert error"></div>
     <div class="modal-footer">
-      <button class="btn btn-outline" onclick="submitDone(false)">Bina file ke Done</button>
-      <button class="btn btn-green" id="doneSubmitBtn" onclick="submitDone(true)">✅ Done</button>
+      <button class="btn btn-outline" onclick="closeModal('doneModal')">Cancel</button>
+      <button class="btn btn-green" id="doneSubmitBtn" onclick="submitDone()">✅ Mark Done</button>
     </div>
   </div>
 </div>

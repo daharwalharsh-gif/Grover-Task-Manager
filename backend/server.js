@@ -47,6 +47,29 @@ const IS_SERVERLESS = !!process.env.VERCEL;
 // Connection ka timezone IST wahin set hota hai.
 const db = require('../data/db');
 
+// ══════════════════════════════════════════════════════
+// SCHEMA_READY — schema taiyaar hone ka ek hi signal
+// ══════════════════════════════════════════════════════
+// data/auto-setup.js migrations chadhata hai aur pehla admin banata hai.
+// Neeche kuch _ensureXxx() bhi hain jo apni tables/columns khud banate hain
+// (FMS, queries, view_only). Ye dono EK SAATH nahi chal sakte: khaali database
+// par migration `queries` table bana rahi hoti hai aur usi waqt
+// _ensureQueriesTable() bhi wahi table banata hai — jo bhi doosre number par
+// aaya, uska CREATE "Duplicate key name" par fat jaata hai aur poori migration
+// aadhi ruk jaati hai.
+//
+// Pehle wo blocks setTimeout(3000) par chalte the, yaani "shayad tab tak
+// migration ho gayi hogi" — jo bade schema par ek sikka uchhalne jaisa tha.
+// Ab wo is promise ka intezaar karte hain, isliye kram pakka hai.
+//
+// Serverless par auto-setup chalta hi nahi (har request naya process), isliye
+// wahan ye turant resolve ho jaata hai aur purana bartav bana rehta hai.
+const IS_SERVERLESS_BOOT = !!process.env.VERCEL;
+const SCHEMA_READY = IS_SERVERLESS_BOOT
+  ? Promise.resolve(null)
+  : require('../data/auto-setup').autoSetup(console)
+      .catch(e => { console.error('  ❌ Auto-setup crash:', e.message); return null; });
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -1152,11 +1175,12 @@ async function _canAccessFms(uid, fmsId, isAdmin) {
 
 // Startup par ek baar chalao. Fail ho to app band nahi karte — baaki modules
 // (delegation/checklist) FMS ke bina bhi theek chalte hain.
-setTimeout(() => {
+// Migrations ke BAAD — warna dono ek hi table banane ki koshish karte hain.
+SCHEMA_READY.then(() => {
   _ensureFmsSchema()
     .then(() => console.log('  ✅ FMS schema ready'))
     .catch(e => console.error('  ❌ FMS schema setup failed:', e.message));
-}, 3000);
+});
 
 // Query module — user query daalta hai, HR/Admin answer/reject karte hain.
 // created_at/answered_at IST me store honge (pool time_zone +05:30).
@@ -1177,11 +1201,11 @@ async function _ensureQueriesTable() {
   await db.query(`CREATE INDEX IF NOT EXISTS queries_idx_user ON queries (user_id)`);
   await db.query(`CREATE INDEX IF NOT EXISTS queries_idx_status ON queries (status)`);
 }
-setTimeout(() => {
+SCHEMA_READY.then(() => {
   _ensureQueriesTable()
     .then(() => console.log('  ✅ Queries table ready'))
     .catch(e => console.error('  ❌ Queries table setup failed:', e.message));
-}, 3200);
+});
 
 // view_only — user sab kuch dekh sakta hai lekin kuch bhi badal nahi sakta.
 // Role se alag rakha hai: kisi bhi role par laga sakte hain, aur role ke
@@ -1193,11 +1217,11 @@ async function _ensureViewOnlyColumn() {
     if (e.code !== '42701') throw e;   // 42701 = duplicate_column
   }
 }
-setTimeout(() => {
+SCHEMA_READY.then(() => {
   _ensureViewOnlyColumn()
     .then(() => console.log('  ✅ view_only column ready'))
     .catch(e => console.error('  ❌ view_only column setup failed:', e.message));
-}, 3400);
+});
 
 // Plan-column ki value ko YYYY-MM-DD me badalta hai (DD-MM-YYYY, DD/MM/YYYY,
 // YYYY-MM-DD, aage time laga ho to bhi). Parse na ho to null.
@@ -1662,13 +1686,13 @@ app.post('/api/tasks/:id/proof', requireAuth, async (req, res) => {
     // jinki photo kheenchna bekaar hai.
     const dataUrl = String(image);
     if (!/^data:(image\/(jpeg|jpg|png|webp)|application\/pdf);base64,/.test(dataUrl)) {
-      return res.status(400).json({ error: 'Sirf photo (JPG/PNG/WEBP) ya PDF chalega' });
+      return res.status(400).json({ error: 'Only a photo (JPG/PNG/WEBP) or a PDF can be attached' });
     }
     // ~8MB base64 se bada mat lo. Photo frontend compress karke bhejta hai;
     // PDF jaisa aata hai waisa jaata hai, isliye seema wahi par lagti hai.
     // (express.json ki limit 12mb hai — ye usse pehle saaf error deta hai.)
     if (dataUrl.length > 8 * 1024 * 1024) {
-      return res.status(413).json({ error: 'File bahut badi hai (6MB tak chalegi)' });
+      return res.status(413).json({ error: 'This file is too large (6MB max)' });
     }
 
     const isReplace = !!task.has_proof;
@@ -1887,7 +1911,7 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     if (status === 'completed' && task.waiting_approval) {
       if (!isAdmin && !isPC) {
         return res.status(400).json({
-          error: 'Ye task pehle se approval ke intezaar me hai. Manager ke approve karne tak kuch karna nahi hai.',
+          error: 'This task is already waiting for approval. Nothing to do until your manager approves it.',
         });
       }
       await db.query(`DELETE FROM task_approvals WHERE task_id=? AND task_type=? AND status='pending'`, [req.params.id, type]);
@@ -4204,15 +4228,10 @@ app.use((err, req, res, next) => {
 if (!IS_SERVERLESS) {
   app.listen(PORT, async () => {
     console.log(`\n  ✦ ${BRAND.short}: http://localhost:${PORT}\n`);
-    // Naye database par tables + pehla admin khud bana do. Pehle se lagi hui
-    // migrations skip ho jaati hain, isliye har restart par ye lagbhag muft
-    // hai. Fail ho to sirf log — app chalti rehti hai. Band karna ho:
-    // env me AUTO_SETUP=false.
-    try {
-      await require('../data/auto-setup').autoSetup(console);
-    } catch (e) {
-      console.error('  ❌ Auto-setup crash:', e.message);
-    }
+    // Schema ka kaam upar SCHEMA_READY me shuru ho chuka hai (module load
+    // par) — yahan sirf uske poora hone ka intezaar, taaki neeche wala DB
+    // ping tables ban jaane ke BAAD chale aur sahi ginti bataye.
+    await SCHEMA_READY;
     // Boot par ek baar DB ko chhoo kar dekh lo. Fail ho to app girti NAHI —
     // static pages/health chalte rehte hain — bas log me saaf likha aata hai
     // ki .env ke DB_* / DATABASE_URL dekhne hain (Hostinger par sabse aam galti).
