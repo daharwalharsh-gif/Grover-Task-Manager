@@ -83,7 +83,7 @@ function buildProdEnv() {
   const secret = crypto.randomBytes(32).toString('hex');
   const overrides = {
     DB_KIND: 'mysql',
-    DB_HOST: 'localhost',
+    DB_HOST: '127.0.0.1',
     DB_PORT: '3306',
     NODE_ENV: 'production',
     PORT: '',
@@ -115,7 +115,7 @@ function buildProdEnv() {
       ? '#  badalna ho to sirf APP_URL (https://aapka-domain.com) dekh lo.'
       : '#    DB_NAME, DB_USER, DB_PASSWORD  (hPanel → Databases → Management)',
     hostFilled ? '#' : '#    APP_URL                        (https://aapka-domain.com)',
-    '#  DB_HOST=localhost tab chalega jab app Hostinger par hi ho.',
+    '#  DB_HOST=127.0.0.1 (Hostinger ka MySQL host) — app Hostinger par hi chalti hai.',
     '#  SESSION_SECRET pehle se random bhara hai — badalne ki zarurat nahi.',
     `#  (ZIP bani: ${new Date().toISOString()})`,
     '# ══════════════════════════════════════════════════════════',
@@ -131,7 +131,7 @@ const SETUP_TXT = `GROVER TEX PRINTS — TASK MANAGER  |  HOSTINGER SETUP
    - "Create new MySQL database": naam, user, password do.
      Hostinger prefix lagata hai: u123456789_grover jaisa.
    - Wahi 3 cheezein .env me bharo: DB_NAME, DB_USER, DB_PASSWORD
-   - DB_HOST=localhost rehne do (app Hostinger par hi chal rahi hai).
+   - DB_HOST=127.0.0.1 rehne do (Hostinger yahi host dikhata hai).
 
 2) FILES
    - Ye ZIP hPanel File Manager se app ke folder me upload karke Extract karo

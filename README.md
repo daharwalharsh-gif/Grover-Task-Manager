@@ -33,7 +33,7 @@ Health: `GET /api/health` → app zinda; `GET /api/health?db=1` → DB bhi juda 
 1. "Create new MySQL database" — naam, user, password do. Hostinger prefix
    lagata hai: `u123456789_grover` jaisa naam/user banta hai.
 2. Wahi page "MySQL host" dikhata hai. App Hostinger par hi chal rahi ho to
-   `DB_HOST=localhost` chalega; bahar se (laptop se) connect karna ho to
+   `DB_HOST=127.0.0.1` chalega (hPanel yahi dikhata hai); bahar se (laptop se) connect karna ho to
    **Remote MySQL** me apna IP add karo aur host me `srvNNNN.hstgr.io` wala daalo.
 3. Hostinger shared hosting par **MariaDB** hota hai, MySQL 8 nahi — migrations
    dono par chalti hain (`002` version dekh kar khud adjust ho jaati hai).
