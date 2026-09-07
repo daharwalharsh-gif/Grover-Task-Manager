@@ -66,7 +66,32 @@ app.get('/api/health', async (req, res) => {
     res.json({ status: 'ok', db: { connected: true, version: r.v, database: r.d } });
   } catch (e) {
     console.error('Health DB ping failed:', e.message);
-    res.status(503).json({ status: 'degraded', db: { connected: false } });
+    // Sirf error CODE bahar jaata hai (message/host/user nahi) — itna kaafi
+    // hai ye batane ke liye ki env vars lage hi nahi, password galat hai, ya
+    // database ka naam galat hai. Hostinger par log dekhna mushkil hota hai.
+    const code = e.mysqlCode || e.code || 'UNKNOWN';
+    const hints = {
+      ER_ACCESS_DENIED_ERROR: 'DB_USER / DB_PASSWORD galat, ya env vars lage hi nahi',
+      ER_BAD_DB_ERROR: 'DB_NAME galat (Hostinger par u123456789_xxx jaisa hota hai)',
+      ER_DBACCESS_DENIED_ERROR: 'Is user ko is database par access nahi — hPanel me user ko DB se jodo',
+      ECONNREFUSED: 'DB_HOST / DB_PORT galat (Hostinger par 127.0.0.1:3306)',
+      ENOTFOUND: 'DB_HOST ka naam resolve nahi hua',
+      ETIMEDOUT: 'DB_HOST tak pahunch nahi — host galat ya remote access band',
+    };
+    res.status(503).json({
+      status: 'degraded',
+      db: {
+        connected: false,
+        code,
+        hint: hints[code] || 'npm run db:check chalao',
+        // Env vars set hain ya nahi (values nahi, sirf haan/na)
+        env: {
+          DB_HOST: !!process.env.DB_HOST, DB_NAME: !!process.env.DB_NAME,
+          DB_USER: !!process.env.DB_USER, DB_PASSWORD: !!process.env.DB_PASSWORD,
+          DATABASE_URL: !!process.env.DATABASE_URL,
+        },
+      },
+    });
   }
 });
 
