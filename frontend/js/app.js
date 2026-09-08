@@ -3377,6 +3377,30 @@ function clearFMSTrackFilters() {
   renderFMSTracking();
 }
 
+// Table me dikhi hui rows — row par click karke journey kholne ke liye.
+let _fmsTrackShown = [];
+
+// Record ki haalat aam bhasha me. Server 'not-started' bhi bhejta hai (jab
+// pehle step ki planned date bhari hi na ho), par kaam karne wale ke liye wo
+// bhi "pehle step par ruka hua" hi hai — isliye do hi haal dikhate hain:
+// chal raha hai, ya ho gaya. Isse Running + Finished hamesha Total ke barabar
+// rehte hain (pehle 144 total par 61 in-progress dikhta tha aur baaki 83
+// kahin ginti me hi nahi aate the).
+function _fmsRowState(row) {
+  if (row.status === 'completed') return { key: 'done', label: '✅ Finished', cls: 'completed' };
+  if (row.overdueDays > 0) return { key: 'late', label: `⚠️ ${row.overdueDays} day${row.overdueDays > 1 ? 's' : ''} late`, cls: 'pending' };
+  return { key: 'running', label: '⏳ Running', cls: 'revised' };
+}
+
+// ●●○○ — ek nazar me kitna kaam ho chuka
+function _fmsDots(done, total) {
+  let s = '';
+  for (let i = 0; i < total; i++) {
+    s += `<span style="width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:3px;background:${i < done ? 'var(--success)' : 'var(--muted)'};border:1px solid ${i < done ? 'var(--success)' : 'var(--border)'}"></span>`;
+  }
+  return s;
+}
+
 function renderFMSTracking() {
   const box = document.getElementById('fmsTrackContainer');
   if (!_fmsTrack) return;
@@ -3394,44 +3418,50 @@ function renderFMSTracking() {
   const keep = [];
   for (const d of sheets) {
     for (const row of d.rows) {
-      if (stepF === '__done' && row.status !== 'completed') continue;
+      const st = _fmsRowState(row);
+      if (stepF === '__done' && st.key !== 'done') continue;
       if (stepF && stepF !== '__done' && row.currentStep !== stepF) continue;
-      if (statusF === 'overdue' ? !row.overdueDays : (statusF && row.status !== statusF)) continue;
+      if (statusF === 'overdue' && st.key !== 'late') continue;
+      if (statusF === 'completed' && st.key !== 'done') continue;
+      if (statusF === 'in-progress' && st.key === 'done') continue;
       if (q) {
         const hay = (row.info.join(' ') + ' ' + row.currentStep + ' ' + d.fmsName).toLowerCase();
         if (!hay.includes(q)) continue;
       }
-      keep.push({ d, row });
+      keep.push({ d, row, st });
     }
   }
+  _fmsTrackShown = keep;
 
-  // ── counts (filter ke baad, taaki number aur table ek doosre se mel khayein) ──
-  const total = keep.length;
-  const done = keep.filter(k => k.row.status === 'completed').length;
-  const overdue = keep.filter(k => k.row.overdueDays > 0).length;
+  // ── counts: Running + Finished = Total (hamesha jodne par mel khate hain) ──
+  const done = keep.filter(k => k.st.key === 'done').length;
+  const late = keep.filter(k => k.st.key === 'late').length;
   document.getElementById('fmsTrackCards').style.display = '';
-  document.getElementById('fmsTrackTotal').textContent = total;
-  document.getElementById('fmsTrackProgress').textContent = keep.filter(k => k.row.status === 'in-progress').length;
-  document.getElementById('fmsTrackOverdue').textContent = overdue;
+  document.getElementById('fmsTrackTotal').textContent = keep.length;
+  document.getElementById('fmsTrackProgress').textContent = keep.length - done;
   document.getElementById('fmsTrackDone').textContent = done;
+  document.getElementById('fmsTrackOverdue').textContent = late;
 
-  // ── step-wise strip: kis step par kitne khade hain (sirf ek FMS par) ──
+  // ── step strip: kis step par kitne ruke hain ──
   const strip = document.getElementById('fmsTrackStepStrip');
+  const label = document.getElementById('fmsTrackStripLabel');
   const one = _fmsTrackOne();
   if (one && one.steps.length) {
     const counts = {};
-    keep.forEach(k => { if (k.row.status !== 'completed') counts[k.row.currentStep] = (counts[k.row.currentStep] || 0) + 1; });
+    keep.forEach(k => { if (k.st.key !== 'done') counts[k.row.currentStep] = (counts[k.row.currentStep] || 0) + 1; });
+    label.textContent = 'Kitne records kis step par ruke hain — click to filter';
     strip.innerHTML = one.steps.map((s, i) => {
       const n = counts[s] || 0;
       const on = stepF === s;
       return `<button class="fms-step-tab ${on ? 'active' : ''}" onclick="pickFMSTrackStep('${escapeHtml(s).replace(/'/g, "\\'")}')">
-        <span style="opacity:.6">${i + 1}.</span> ${escapeHtml(s)}
-        <span style="margin-left:5px;font-weight:700;${n ? 'color:var(--destructive)' : 'opacity:.5'}">${n}</span>
+        Step ${i + 1} · ${escapeHtml(s)}
+        <span style="margin-left:6px;font-weight:800;${n ? 'color:var(--destructive)' : 'opacity:.45'}">${n}</span>
       </button>`;
-    }).join('');
-  } else strip.innerHTML = '';
+    }).join('') + `<button class="fms-step-tab ${stepF === '__done' ? 'active' : ''}" onclick="pickFMSTrackStep('__done')">
+        ✅ Finished <span style="margin-left:6px;font-weight:800;${done ? 'color:var(--success)' : 'opacity:.45'}">${done}</span>
+      </button>`;
+  } else { strip.innerHTML = ''; label.textContent = ''; }
 
-  // ── error wale sheets ka saaf message ──
   const errs = sheets.filter(d => d.error);
   const errHtml = errs.map(d => `
     <div class="alert error" style="display:block;margin-bottom:10px">
@@ -3443,62 +3473,86 @@ function renderFMSTracking() {
     return;
   }
 
-  // Ek FMS par uske apne columns dikhate hain; 'All FMS' par columns har sheet
-  // me alag hote hain, isliye wahan sirf FMS + pehle do info column.
-  const infoHeads = one ? one.infoHeaders : ['FMS', 'Record'];
-  const MAX_INFO = 6;   // itne se zyada column mobile par table ko chaudi kar dete hain
-  const heads = one ? infoHeads.slice(0, MAX_INFO) : infoHeads;
+  // Ek FMS par uske apne columns; 'All FMS' par har sheet ke column alag hote
+  // hain, isliye wahan FMS ka naam + pehchan ek hi cell me.
+  const MAX_INFO = 5;
+  const heads = one ? one.infoHeaders.slice(0, MAX_INFO) : ['FMS', 'Record'];
 
-  const cell = v => `<td style="font-size:12.5px">${escapeHtml(v || '—')}</td>`;
-  const rowsHtml = keep.slice(0, 1000).map(({ d, row }) => {
+  const rowsHtml = keep.slice(0, 1000).map(({ d, row, st }, i) => {
     const infoCells = one
-      ? row.info.slice(0, MAX_INFO).map(cell).join('')
+      ? row.info.slice(0, MAX_INFO).map(v => `<td style="font-size:12.5px">${escapeHtml(v || '—')}</td>`).join('')
       : `<td style="font-size:12.5px;font-weight:600">${escapeHtml(d.fmsName)}</td>`
         + `<td style="font-size:12.5px">${escapeHtml(row.info.filter(Boolean).slice(0, 3).join(' · ') || '—')}</td>`;
-    const pct = row.totalSteps ? Math.round(row.doneCount / row.totalSteps * 100) : 0;
-    const stepCell = row.status === 'completed'
-      ? `<span class="status-badge completed">✅ Completed</span>`
-      : `<span class="status-badge ${row.overdueDays ? 'pending' : 'revised'}" title="Planned: ${escapeHtml(row.currentPlanned || '—')}">
-           ${row.currentStepIndex >= 0 ? (row.currentStepIndex + 1) + '. ' : ''}${escapeHtml(row.currentStep)}
-         </span>`;
-    return `<tr>
+
+    // "Abhi kahan hai" — sabse kaam ki cheez, isliye sabse saaf.
+    const stepCell = st.key === 'done'
+      ? `<span style="font-weight:700;color:var(--success)">All steps done</span>`
+      : `<div style="font-weight:700;font-size:13px">${escapeHtml(row.currentStep)}</div>
+         <div style="font-size:11px;color:var(--muted-foreground)">Step ${row.currentStepIndex + 1} of ${row.totalSteps}${row.currentPlanned ? ' · planned ' + escapeHtml(String(row.currentPlanned).split(' ')[0]) : ''}</div>`;
+
+    return `<tr onclick="openFMSJourney(${i})" style="cursor:pointer" title="Click to see every step">
       ${infoCells}
-      <td style="white-space:nowrap">${stepCell}</td>
-      <td style="white-space:nowrap;font-size:12px">
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="width:60px;height:6px;border-radius:99px;background:var(--muted);overflow:hidden">
-            <div style="height:100%;width:${pct}%;background:${row.status === 'completed' ? 'var(--success)' : 'var(--primary)'}"></div>
-          </div>
-          <span style="color:var(--muted-foreground)">${row.doneCount}/${row.totalSteps}</span>
-        </div>
+      <td style="min-width:150px">${stepCell}</td>
+      <td style="white-space:nowrap">
+        <div>${_fmsDots(row.doneCount, row.totalSteps)}</div>
+        <div style="font-size:11px;color:var(--muted-foreground);margin-top:2px">${row.doneCount} of ${row.totalSteps} done</div>
       </td>
-      <td style="white-space:nowrap;font-size:12px">${row.overdueDays
-        ? `<span style="color:var(--destructive);font-weight:700">${row.overdueDays}d late</span>`
-        : `<span style="color:var(--muted-foreground)">—</span>`}</td>
+      <td style="white-space:nowrap"><span class="status-badge ${st.cls}">${st.label}</span></td>
     </tr>`;
   }).join('');
 
   box.innerHTML = errHtml + `
     <div class="mis-table-wrap mis-scroll-x">
-      <table style="min-width:760px">
+      <table style="min-width:820px">
         <thead><tr>
           ${heads.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
-          <th style="white-space:nowrap">Current Step</th>
-          <th style="white-space:nowrap">Progress</th>
-          <th style="white-space:nowrap">Overdue</th>
+          <th style="white-space:nowrap">Abhi kahan hai</th>
+          <th style="white-space:nowrap">Kitna hua</th>
+          <th style="white-space:nowrap">Status</th>
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>
-    ${keep.length > 1000 ? `<div style="padding:10px;text-align:center;font-size:12px;color:var(--muted-foreground)">Showing the first 1000 of ${keep.length} — use search to narrow it down</div>` : ''}`;
+    <div style="padding:8px 2px;font-size:12px;color:var(--muted-foreground)">
+      Kisi bhi line par click karo — us record ka poora step-by-step safar khulega.
+      ${keep.length > 1000 ? ` Abhi pehle 1000 dikh rahe hain (kul ${keep.length}) — search se chhota karo.` : ''}
+    </div>`;
 }
 
-// Step strip par click — wahi step dropdown me bhi set ho jaata hai (dobara
-// click karne par filter hat jaata hai).
+// Step strip / dropdown ka filter — dobara click karne par hat jaata hai.
 function pickFMSTrackStep(name) {
   const sel = document.getElementById('fmsTrackStep');
   sel.value = sel.value === name ? '' : name;
   renderFMSTracking();
+}
+
+// Ek record ka poora safar — har step ka planned, actual aur haalat.
+function openFMSJourney(i) {
+  const item = _fmsTrackShown[i];
+  if (!item) return;
+  const { d, row, st } = item;
+  const pairs = d.infoHeaders.map((h, n) => [h, row.info[n]]).filter(([, v]) => v);
+  document.getElementById('fmsJourneyHead').innerHTML =
+    `<strong style="color:var(--foreground)">${escapeHtml(d.fmsName)}</strong> · ${st.label}<br>`
+    + pairs.slice(0, 6).map(([h, v]) => `${escapeHtml(h)}: <strong style="color:var(--foreground)">${escapeHtml(v)}</strong>`).join(' &nbsp;·&nbsp; ');
+
+  document.getElementById('fmsJourneyBody').innerHTML = row.stages.map((s, n) => {
+    const isNow = n === row.currentStepIndex;
+    const icon = s.status === 'done' ? '✅' : (isNow ? '👉' : '⬜');
+    const color = s.status === 'done' ? 'var(--success)' : (isNow ? 'var(--warning)' : 'var(--muted-foreground)');
+    return `<div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:15px;line-height:1.2">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:${isNow ? '700' : '600'};font-size:13px;color:${color}">
+          Step ${n + 1} · ${escapeHtml(s.name)}${isNow ? '  ← abhi yahan hai' : ''}
+        </div>
+        <div style="font-size:12px;color:var(--muted-foreground);margin-top:2px">
+          Planned: ${escapeHtml(s.planned || '—')} &nbsp;·&nbsp; Actual: ${escapeHtml(s.actual || '—')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('fmsJourneyModal').classList.add('open');
 }
 
 // ══════════════════════════════════════════════════════

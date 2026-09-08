@@ -146,11 +146,24 @@ async function autoSetup(logger = console) {
     return { skipped: true };
   }
 
-  let conn;
-  try {
-    conn = await mysql.createConnection(connConfig());
-  } catch (e) {
-    logger.error(`  ❌ Auto-setup: database se connect nahi hua — ${e.code || ''} ${e.message}`);
+  // Boot ke waqt DB kabhi-kabhi thodi der leta hai (shared hosting par MySQL
+  // aur app ek saath uthte hain; ek baar yahan ETIMEDOUT aaya tha jabki DB
+  // theek tha). Ek connect fail hone par poora schema setup agle restart tak
+  // ruk jaata, isliye do baar koshish karte hain.
+  let conn, lastErr;
+  for (let attempt = 1; attempt <= 2 && !conn; attempt++) {
+    try {
+      conn = await mysql.createConnection(connConfig());
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) {
+        logger.log(`  ⏳ Auto-setup: DB abhi taiyaar nahi (${e.code || e.message}) — 5 second me dobara`);
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+  }
+  if (!conn) {
+    logger.error(`  ❌ Auto-setup: database se connect nahi hua — ${lastErr.code || ''} ${lastErr.message}`);
     logger.error('     Env vars (DB_HOST/DB_NAME/DB_USER/DB_PASSWORD) dekho.');
     return { connected: false };
   }

@@ -596,25 +596,25 @@
       </select>
       <select id="fmsTrackStatus" onchange="renderFMSTracking()"
         style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;min-width:150px;background:var(--card);color:var(--foreground);cursor:pointer">
-        <option value="">All status</option>
-        <option value="in-progress">In progress</option>
-        <option value="completed">Completed</option>
-        <option value="overdue">Overdue only</option>
-        <option value="not-started">Not started</option>
+        <option value="">All records</option>
+        <option value="in-progress">Still running</option>
+        <option value="completed">Finished</option>
+        <option value="overdue">Late only</option>
       </select>
       <button class="btn btn-outline btn-sm" onclick="clearFMSTrackFilters()">✕ Clear</button>
     </div>
 
-    <!-- Counts -->
+    <!-- Counts — Running + Finished hamesha Total ke barabar hote hain -->
     <div class="overview-cards" id="fmsTrackCards" style="display:none">
       <div class="ov-card total"><div class="label">Total Records</div><div class="number" id="fmsTrackTotal">—</div></div>
-      <div class="ov-card pending"><div class="label">In Progress</div><div class="number" id="fmsTrackProgress">—</div></div>
-      <div class="ov-card revised"><div class="label">Overdue</div><div class="number" id="fmsTrackOverdue">—</div></div>
-      <div class="ov-card completed"><div class="label">Completed</div><div class="number" id="fmsTrackDone">—</div></div>
+      <div class="ov-card pending"><div class="label">Still Running</div><div class="number" id="fmsTrackProgress">—</div></div>
+      <div class="ov-card completed"><div class="label">Finished</div><div class="number" id="fmsTrackDone">—</div></div>
+      <div class="ov-card revised"><div class="label">Late</div><div class="number" id="fmsTrackOverdue">—</div></div>
     </div>
 
-    <!-- Step-wise ginti — kis step par kitne atke hain -->
-    <div id="fmsTrackStepStrip" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
+    <!-- Step-wise ginti — kis step par kitne ruke hain -->
+    <div style="font-size:12px;font-weight:600;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px" id="fmsTrackStripLabel"></div>
+    <div id="fmsTrackStepStrip" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"></div>
 
     <div id="fmsTrackContainer">
       <div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">Loading…</div>
@@ -1435,6 +1435,21 @@
     <div class="modal-footer" style="justify-content:space-between">
       <button class="btn btn-outline" onclick="closeModal('proofViewModal')">Close</button>
       <a id="proofViewDownload" class="btn btn-primary" download="proof.jpg" style="text-decoration:none">⬇ Download</a>
+    </div>
+  </div>
+</div>
+
+<!-- ══ FMS TRACKING — ek record ka poora safar ══
+     Table me sirf "abhi kahan hai" dikhta hai; yahan har step ka planned/actual
+     ek saath dikhta hai, taaki pata chale kahan se der shuru hui. -->
+<div class="modal-overlay" id="fmsJourneyModal">
+  <div class="modal" style="max-width:560px">
+    <button class="modal-close-x" onclick="closeModal('fmsJourneyModal')" aria-label="Close">✕</button>
+    <h3>Record journey</h3>
+    <div id="fmsJourneyHead" style="font-size:13px;color:var(--muted-foreground);margin-bottom:14px"></div>
+    <div id="fmsJourneyBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('fmsJourneyModal')">Close</button>
     </div>
   </div>
 </div>
