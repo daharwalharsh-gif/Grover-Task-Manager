@@ -3449,7 +3449,7 @@ function renderFMSTracking() {
   if (one && one.steps.length) {
     const counts = {};
     keep.forEach(k => { if (k.st.key !== 'done') counts[k.row.currentStep] = (counts[k.row.currentStep] || 0) + 1; });
-    label.textContent = 'Kitne records kis step par ruke hain — click to filter';
+    label.textContent = 'How many records are waiting at each step — click to filter';
     strip.innerHTML = one.steps.map((s, i) => {
       const n = counts[s] || 0;
       const on = stepF === s;
@@ -3506,16 +3506,16 @@ function renderFMSTracking() {
       <table style="min-width:820px">
         <thead><tr>
           ${heads.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
-          <th style="white-space:nowrap">Abhi kahan hai</th>
-          <th style="white-space:nowrap">Kitna hua</th>
+          <th style="white-space:nowrap">Currently At</th>
+          <th style="white-space:nowrap">Steps Done</th>
           <th style="white-space:nowrap">Status</th>
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>
     <div style="padding:8px 2px;font-size:12px;color:var(--muted-foreground)">
-      Kisi bhi line par click karo — us record ka poora step-by-step safar khulega.
-      ${keep.length > 1000 ? ` Abhi pehle 1000 dikh rahe hain (kul ${keep.length}) — search se chhota karo.` : ''}
+      Click any row to see that record's full step-by-step journey.
+      ${keep.length > 1000 ? ` Showing the first 1000 of ${keep.length} — use search to narrow it down.` : ''}
     </div>`;
 }
 
@@ -3544,7 +3544,7 @@ function openFMSJourney(i) {
       <div style="font-size:15px;line-height:1.2">${icon}</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:${isNow ? '700' : '600'};font-size:13px;color:${color}">
-          Step ${n + 1} · ${escapeHtml(s.name)}${isNow ? '  ← abhi yahan hai' : ''}
+          Step ${n + 1} · ${escapeHtml(s.name)}${isNow ? '  ← currently here' : ''}
         </div>
         <div style="font-size:12px;color:var(--muted-foreground);margin-top:2px">
           Planned: ${escapeHtml(s.planned || '—')} &nbsp;·&nbsp; Actual: ${escapeHtml(s.actual || '—')}
