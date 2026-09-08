@@ -25,3 +25,6 @@ dist/
 *.zip
 # Hostinger import .env (npm run env:hostinger) — asli secrets, repo me nahi
 *.env
+
+# Hostinger env field me paste karne wali value — asli key, repo me nahi
+google-credentials-value.txt

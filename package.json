@@ -14,7 +14,8 @@
     "db:sql": "node data/scripts/make-setup-sql.js",
     "env:hostinger": "node data/scripts/make-env.js",
     "db:seed-users": "node data/scripts/seed-users.js",
-    "google:setup": "node data/scripts/google-setup.js"
+    "google:setup": "node data/scripts/google-setup.js",
+    "fms:setup": "node data/scripts/fms-setup.js"
   },
   "engines": {
     "node": ">=20"

@@ -3418,6 +3418,164 @@ app.get('/api/fms-tasks/:fmsId/summary', requireAuth, async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════
+// FMS TRACKING — har record abhi kis step par khada hai
+// ══════════════════════════════════════════════════════
+// FMS Tasks page ek step chun kar uske pending rows dikhata hai. Tracking uska
+// ulta hai: har record ki EK line, jisme dikhta hai wo abhi kis step par atka
+// hai aur kitne step ho chuke hain. Isse "ye order kahan tak pahuncha" ka jawab
+// ek nazar me mil jaata hai.
+//
+// Sabhi FMS ek saath maange ja sakte hain (?fmsId chhod do). Har sheet ka read
+// alag try/catch me hai — ek sheet share na ho ya delete ho gayi ho to baaki
+// FMS phir bhi dikhte hain, poori page khaali nahi hoti.
+//
+// Search aur filter jaan-boojh kar frontend par hain: rows ek baar aa jaate
+// hain aur har keystroke par Google Sheets ko dobara nahi poochna padta
+// (Sheets API ki apni rate limit hai, aur ek sheet ka read 1-2 second leta hai).
+const FMS_TRACK_MAX_ROWS = 5000;   // ek sheet se itni hi rows — payload kaabu me rahe
+
+async function buildFmsTracking(sheet) {
+  const [steps] = await db.query(
+    'SELECT * FROM fms_steps WHERE fms_id=? ORDER BY step_order ASC', [sheet.id]);
+  if (!steps.length) {
+    return { fmsId: sheet.id, fmsName: sheet.fms_name || sheet.sheet_name, steps: [], infoHeaders: [], rows: [] };
+  }
+
+  const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+  const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
+  const tabName = sheet.sheet_name || 'Sheet1';
+  const qTab = /^[A-Za-z0-9_]+$/.test(tabName) ? tabName : `'${tabName.replace(/'/g, "''")}'`;
+  const all = (await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: qTab })).data.values || [];
+
+  const hIdx = (sheet.header_row || 1) - 1;
+  const headers = all[hIdx] || [];
+  steps.forEach(s => _healStepCols(s, headers));   // column add/delete safe
+
+  // "Info" columns = pehle step ke Planned column se PEHLE ka sab kuch. Yahi
+  // record ki pehchan hote hain (Date, PO No., Item Name, Qty, Quality…).
+  // Isse kisi config ki zarurat nahi padti aur har FMS sheet par chal jaata hai.
+  const firstPlanIdx = colToIdx(steps[0].plan_col);
+  const infoIdx = [];
+  for (let i = 0; i < headers.length && (firstPlanIdx < 0 || i < firstPlanIdx); i++) {
+    if (String(headers[i] || '').trim()) infoIdx.push(i);
+  }
+  const infoHeaders = infoIdx.map(i => String(headers[i]).trim());
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dayDiff = (a, b) => Math.round((a.getTime() - b.getTime()) / 86400000);
+
+  const rows = [];
+  for (const row of all.slice(hIdx + 1)) {
+    if (rows.length >= FMS_TRACK_MAX_ROWS) break;
+    if (!row.some(c => String(c || '').trim())) continue;         // poori khaali line
+
+    const stages = steps.map(s => {
+      const planned = String(row[colToIdx(s.plan_col)] || '').trim();
+      const actual = String(row[colToIdx(s.actual_col)] || '').trim();
+      return {
+        name: s.step_name,
+        planned, actual,
+        status: actual ? 'done' : (planned ? 'pending' : 'not-started'),
+      };
+    });
+
+    const info = infoIdx.map(i => String(row[i] || '').trim());
+    // Asli record hai ya sheet ki khaali template line?
+    // Sheet me neeche saikdon aisi lines padi hoti hain jinme sirf formula ka
+    // nateeja hota hai (Order Days = 1, Status = FALSE, TAT = 0.5) — na PO,
+    // na item, na koi step shuru. "koi bhi ek value hai" wala test unhe andar
+    // le aata tha aur table me poori khaali line dikhti thi.
+    // Isliye do me se ek shart poori honi chahiye:
+    //   • koi step shuru ho chuka ho (planned ya actual bhara ho), YA
+    //   • kam se kam DO info column bhare hon (asli record me timestamp, sr,
+    //     date, PO, item… sab hote hain; template line me ek awaara formula).
+    const started = stages.some(s => s.planned || s.actual);
+    if (!started && info.filter(Boolean).length < 2) continue;
+
+    const doneCount = stages.filter(s => s.status === 'done').length;
+    const allDone = doneCount === stages.length;
+    const curIdx = allDone ? -1 : stages.findIndex(s => s.status !== 'done');
+    const cur = curIdx >= 0 ? stages[curIdx] : null;
+
+    // Overdue = current step ki planned date nikal chuki hai. Yahi asli
+    // "atka hua" signal hai; done steps ka purana delay alag se ginte hain.
+    let overdueDays = 0;
+    if (cur && cur.status === 'pending') {
+      const p = _parseDMY(cur.planned);
+      if (p) { p.setHours(0, 0, 0, 0); const d = dayDiff(today, p); if (d > 0) overdueDays = d; }
+    }
+    // Ab tak ke done steps me kitne din ki der hui (Actual − Planned ka jod)
+    let delayDays = 0;
+    for (const s of stages) {
+      if (s.status !== 'done') continue;
+      const p = _parseDMY(s.planned), a = _parseDMY(s.actual);
+      if (p && a) { const d = dayDiff(a, p); if (d > 0) delayDays += d; }
+    }
+
+    rows.push({
+      info,
+      doneCount,
+      totalSteps: stages.length,
+      currentStepIndex: curIdx,                                   // -1 = poora ho gaya
+      currentStep: allDone ? 'Completed' : (cur ? cur.name : '—'),
+      currentPlanned: cur ? cur.planned : '',
+      status: allDone ? 'completed' : (doneCount === 0 && stages.every(s => s.status === 'not-started') ? 'not-started' : 'in-progress'),
+      overdueDays,
+      delayDays,
+      stages: stages.map(s => ({ name: s.name, status: s.status, planned: s.planned, actual: s.actual })),
+    });
+  }
+
+  return {
+    fmsId: sheet.id,
+    fmsName: sheet.fms_name || sheet.sheet_name,
+    sheetName: sheet.sheet_name,
+    steps: steps.map(s => s.step_name),
+    infoHeaders,
+    rows,
+  };
+}
+
+app.get('/api/fms-tracking', requireAuth, async (req, res) => {
+  try {
+    // Wahi log jo FMS "manage" karte hain (frontend ka isFmsManager) — ye poori
+    // sheet ka aar-paar dikhata hai, isliye ek doer ke liye nahi hai.
+    const role = req.session.role;
+    if (!['admin', 'hod', 'pc'].includes(role)) return res.status(403).json({ error: 'Not allowed' });
+
+    const wanted = String(req.query.fmsId || '').trim();
+    const [sheets] = wanted && wanted !== 'all'
+      ? await db.query('SELECT * FROM fms_sheets WHERE id=?', [wanted])
+      : await db.query('SELECT * FROM fms_sheets ORDER BY id ASC');
+    if (!sheets.length) return res.json({ fmsList: [], data: [] });
+
+    // Sheets saath-saath padho — teen sheet ek-ek karke padhne me 3-6 second
+    // lagte hain, saath me ~2.
+    const data = await Promise.all(sheets.map(async (s) => {
+      try {
+        return await buildFmsTracking(s);
+      } catch (e) {
+        const msg = e && e.code === 403
+          ? 'Sheet service account ke saath share nahi hai'
+          : (e && e.message) || 'Sheet padhi nahi ja saki';
+        console.error(`FMS tracking failed for sheet ${s.id}:`, msg);
+        return {
+          fmsId: s.id, fmsName: s.fms_name || s.sheet_name, sheetName: s.sheet_name,
+          error: msg, steps: [], infoHeaders: [], rows: [],
+        };
+      }
+    }));
+
+    res.json({
+      fmsList: sheets.map(s => ({ id: s.id, name: s.fms_name || s.sheet_name })),
+      data,
+    });
+  } catch (err) {
+    console.error(err); res.status(500).json({ error: 'Server error. Please try again.' });
+  }
+});
+
 // Mark row as done — writes actual (date only) + delay reason to sheet
 app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, res) => {
   try {

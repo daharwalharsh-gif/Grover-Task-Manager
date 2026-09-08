@@ -316,6 +316,12 @@ async function init() {
     // Jo doer kisi FMS step ka hissa nahi hai, usse FMS ka poora UI hata do —
     // sidebar ka "FMS Tasks" aur dashboard table ka "FMS" tab dono.
     // Admin/HOD/PC ko hamesha dikhta hai, wo sabka FMS dekhte hain.
+    // FMS Tracking poori sheet ka aar-paar dikhata hai, isliye sirf managers ko
+    // (server bhi yahi rok lagata hai — /api/fms-tracking par role check hai).
+    if (isFmsManager() && !isPageDisabled('fms-tasks')) {
+      const tr = document.getElementById('nav-fms-tracking');
+      if (tr) tr.style.display = '';
+    }
     if (!isFmsManager() && ME.isFmsDoer === false) {
       const ft = document.getElementById('nav-fms-tasks');
       if (ft) ft.style.display = 'none';
@@ -407,7 +413,7 @@ function setMinDates() {
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',leaves:'Leave',query:'Query',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks',records:'Employee Records',newcopy:'New Client Copy',updateclient:'Update Client'};
+const pageTitles = {dashboard:'Dashboard',alltasks:'All Tasks',approvals:'Approvals',leaves:'Leave',query:'Query',users:'Users',profile:'Profile',mis:'MIS Report',fms:'FMS Admin','fms-tasks':'FMS Tasks','fms-tracking':'FMS Tracking',records:'Employee Records',newcopy:'New Client Copy',updateclient:'Update Client'};
 
 // Sidebar par cursor jaate hi (jab wo expand hone lagta hai) koi bhi khula dropdown
 // band kar do — warna native select popup sidebar ke upar overlap dikhta hai.
@@ -455,6 +461,7 @@ function isTaskActionDisabled(a) { return DISABLED_TASK_ACTIONS[a] === true; }
 // Har page ka sidebar nav item — disabled pages ko hide karne ke liye
 const PAGE_NAV_ID = {
   'leaves': 'nav-leaves', 'query': 'nav-query', 'fms': 'nav-fms', 'fms-tasks': 'nav-fms-tasks',
+  'fms-tracking': 'nav-fms-tracking',
 };
 
 function navigate(page, el) {
@@ -480,6 +487,7 @@ function navigate(page, el) {
   if (page==='approvals') { loadApprovals(); loadApprovalBadge(); }
   if (page==='fms') loadFMSAdmin();
   if (page==='fms-tasks') loadFMSTasks();
+  if (page==='fms-tracking') loadFMSTracking();
   if (page==='mis') initMISDeptFilter();
   if (page==='leaves') loadLeaves();
   if (page==='query') loadQueries();
@@ -3290,6 +3298,207 @@ async function deleteUser(id) {
   const r=await api(`/api/users/${id}`,'DELETE');
   if (r.error) return showToast(r.error,'error');
   loadUsers();
+}
+
+// ══════════════════════════════════════════════════════
+// FMS TRACKING — har record abhi kis step par hai
+// ══════════════════════════════════════════════════════
+// Server ek baar saare FMS ke rows de deta hai (/api/fms-tracking); tabs,
+// search aur dono filter yahin chalte hain. Sheets ka read dheema hai (ek
+// sheet 1-2 second), isliye har keystroke par dobara poochna theek nahi.
+let _fmsTrack = null;       // server ka poora jawab
+let _fmsTrackTab = 'all';   // chuna hua FMS id, ya 'all'
+
+async function loadFMSTracking(force) {
+  const box = document.getElementById('fmsTrackContainer');
+  if (_fmsTrack && !force) { renderFMSTracking(); return; }   // page dobara khulne par turant
+  box.innerHTML = `<div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">⏳ Reading Google Sheets…</div>`;
+  document.getElementById('fmsTrackCards').style.display = 'none';
+  document.getElementById('fmsTrackStepStrip').innerHTML = '';
+
+  const r = await api('/api/fms-tracking');
+  if (r.error) {
+    _fmsTrack = null;
+    box.innerHTML = `<div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">${escapeHtml(r.error)}</div>`;
+    return;
+  }
+  _fmsTrack = r;
+  const t = new Date();
+  document.getElementById('fmsTrackUpdated').textContent =
+    `Updated ${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+  // Pehli baar: pehla FMS chun lo. 'all' me har FMS ke columns alag hote hain,
+  // isliye default ek hi FMS rakhna zyada kaam ka hai.
+  if (_fmsTrackTab === 'all' && r.data.length) _fmsTrackTab = String(r.data[0].fmsId);
+  renderFMSTrackTabs();
+  fillFMSTrackSteps();
+  renderFMSTracking();
+}
+
+function renderFMSTrackTabs() {
+  const wrap = document.getElementById('fmsTrackTabs');
+  if (!_fmsTrack) { wrap.innerHTML = ''; return; }
+  const tabs = [{ id: 'all', name: 'All FMS' }]
+    .concat(_fmsTrack.data.map(d => ({ id: String(d.fmsId), name: d.fmsName, error: d.error, count: d.rows.length })));
+  wrap.innerHTML = tabs.map(t => `
+    <button class="fms-name-tab ${String(_fmsTrackTab) === t.id ? 'active' : ''}"
+            onclick="setFMSTrackTab('${t.id}')" title="${t.error ? escapeHtml(t.error) : ''}">
+      ${escapeHtml(t.name)}${t.error ? ' ⚠️' : (t.count !== undefined ? ` <span style="opacity:.7">(${t.count})</span>` : '')}
+    </button>`).join('');
+}
+
+function setFMSTrackTab(id) {
+  _fmsTrackTab = id;
+  renderFMSTrackTabs();
+  fillFMSTrackSteps();
+  renderFMSTracking();
+}
+
+// Step dropdown chune hue FMS ke steps se bharta hai. 'All FMS' par har FMS ke
+// step alag hote hain, isliye wahan step filter ka koi matlab nahi — chhupa dete hain.
+function fillFMSTrackSteps() {
+  const sel = document.getElementById('fmsTrackStep');
+  const one = _fmsTrackOne();
+  sel.innerHTML = `<option value="">All steps</option>`
+    + (one ? one.steps.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('') : '')
+    + `<option value="__done">✅ Completed</option>`;
+  sel.value = '';
+  sel.style.display = one ? '' : 'none';
+}
+
+function _fmsTrackOne() {
+  if (!_fmsTrack || _fmsTrackTab === 'all') return null;
+  return _fmsTrack.data.find(d => String(d.fmsId) === String(_fmsTrackTab)) || null;
+}
+
+function clearFMSTrackFilters() {
+  document.getElementById('fmsTrackSearch').value = '';
+  document.getElementById('fmsTrackStep').value = '';
+  document.getElementById('fmsTrackStatus').value = '';
+  renderFMSTracking();
+}
+
+function renderFMSTracking() {
+  const box = document.getElementById('fmsTrackContainer');
+  if (!_fmsTrack) return;
+  if (!_fmsTrack.data.length) {
+    box.innerHTML = `<div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">No FMS set up yet — add one from FMS Admin.</div>`;
+    return;
+  }
+
+  const q = (document.getElementById('fmsTrackSearch').value || '').toLowerCase().trim();
+  const stepF = document.getElementById('fmsTrackStep').value;
+  const statusF = document.getElementById('fmsTrackStatus').value;
+  const sheets = _fmsTrackTab === 'all' ? _fmsTrack.data : _fmsTrack.data.filter(d => String(d.fmsId) === String(_fmsTrackTab));
+
+  // ── filter ──
+  const keep = [];
+  for (const d of sheets) {
+    for (const row of d.rows) {
+      if (stepF === '__done' && row.status !== 'completed') continue;
+      if (stepF && stepF !== '__done' && row.currentStep !== stepF) continue;
+      if (statusF === 'overdue' ? !row.overdueDays : (statusF && row.status !== statusF)) continue;
+      if (q) {
+        const hay = (row.info.join(' ') + ' ' + row.currentStep + ' ' + d.fmsName).toLowerCase();
+        if (!hay.includes(q)) continue;
+      }
+      keep.push({ d, row });
+    }
+  }
+
+  // ── counts (filter ke baad, taaki number aur table ek doosre se mel khayein) ──
+  const total = keep.length;
+  const done = keep.filter(k => k.row.status === 'completed').length;
+  const overdue = keep.filter(k => k.row.overdueDays > 0).length;
+  document.getElementById('fmsTrackCards').style.display = '';
+  document.getElementById('fmsTrackTotal').textContent = total;
+  document.getElementById('fmsTrackProgress').textContent = keep.filter(k => k.row.status === 'in-progress').length;
+  document.getElementById('fmsTrackOverdue').textContent = overdue;
+  document.getElementById('fmsTrackDone').textContent = done;
+
+  // ── step-wise strip: kis step par kitne khade hain (sirf ek FMS par) ──
+  const strip = document.getElementById('fmsTrackStepStrip');
+  const one = _fmsTrackOne();
+  if (one && one.steps.length) {
+    const counts = {};
+    keep.forEach(k => { if (k.row.status !== 'completed') counts[k.row.currentStep] = (counts[k.row.currentStep] || 0) + 1; });
+    strip.innerHTML = one.steps.map((s, i) => {
+      const n = counts[s] || 0;
+      const on = stepF === s;
+      return `<button class="fms-step-tab ${on ? 'active' : ''}" onclick="pickFMSTrackStep('${escapeHtml(s).replace(/'/g, "\\'")}')">
+        <span style="opacity:.6">${i + 1}.</span> ${escapeHtml(s)}
+        <span style="margin-left:5px;font-weight:700;${n ? 'color:var(--destructive)' : 'opacity:.5'}">${n}</span>
+      </button>`;
+    }).join('');
+  } else strip.innerHTML = '';
+
+  // ── error wale sheets ka saaf message ──
+  const errs = sheets.filter(d => d.error);
+  const errHtml = errs.map(d => `
+    <div class="alert error" style="display:block;margin-bottom:10px">
+      <strong>${escapeHtml(d.fmsName)}:</strong> ${escapeHtml(d.error)}
+    </div>`).join('');
+
+  if (!keep.length) {
+    box.innerHTML = errHtml + `<div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">No records match this search.</div>`;
+    return;
+  }
+
+  // Ek FMS par uske apne columns dikhate hain; 'All FMS' par columns har sheet
+  // me alag hote hain, isliye wahan sirf FMS + pehle do info column.
+  const infoHeads = one ? one.infoHeaders : ['FMS', 'Record'];
+  const MAX_INFO = 6;   // itne se zyada column mobile par table ko chaudi kar dete hain
+  const heads = one ? infoHeads.slice(0, MAX_INFO) : infoHeads;
+
+  const cell = v => `<td style="font-size:12.5px">${escapeHtml(v || '—')}</td>`;
+  const rowsHtml = keep.slice(0, 1000).map(({ d, row }) => {
+    const infoCells = one
+      ? row.info.slice(0, MAX_INFO).map(cell).join('')
+      : `<td style="font-size:12.5px;font-weight:600">${escapeHtml(d.fmsName)}</td>`
+        + `<td style="font-size:12.5px">${escapeHtml(row.info.filter(Boolean).slice(0, 3).join(' · ') || '—')}</td>`;
+    const pct = row.totalSteps ? Math.round(row.doneCount / row.totalSteps * 100) : 0;
+    const stepCell = row.status === 'completed'
+      ? `<span class="status-badge completed">✅ Completed</span>`
+      : `<span class="status-badge ${row.overdueDays ? 'pending' : 'revised'}" title="Planned: ${escapeHtml(row.currentPlanned || '—')}">
+           ${row.currentStepIndex >= 0 ? (row.currentStepIndex + 1) + '. ' : ''}${escapeHtml(row.currentStep)}
+         </span>`;
+    return `<tr>
+      ${infoCells}
+      <td style="white-space:nowrap">${stepCell}</td>
+      <td style="white-space:nowrap;font-size:12px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:60px;height:6px;border-radius:99px;background:var(--muted);overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${row.status === 'completed' ? 'var(--success)' : 'var(--primary)'}"></div>
+          </div>
+          <span style="color:var(--muted-foreground)">${row.doneCount}/${row.totalSteps}</span>
+        </div>
+      </td>
+      <td style="white-space:nowrap;font-size:12px">${row.overdueDays
+        ? `<span style="color:var(--destructive);font-weight:700">${row.overdueDays}d late</span>`
+        : `<span style="color:var(--muted-foreground)">—</span>`}</td>
+    </tr>`;
+  }).join('');
+
+  box.innerHTML = errHtml + `
+    <div class="mis-table-wrap mis-scroll-x">
+      <table style="min-width:760px">
+        <thead><tr>
+          ${heads.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
+          <th style="white-space:nowrap">Current Step</th>
+          <th style="white-space:nowrap">Progress</th>
+          <th style="white-space:nowrap">Overdue</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    ${keep.length > 1000 ? `<div style="padding:10px;text-align:center;font-size:12px;color:var(--muted-foreground)">Showing the first 1000 of ${keep.length} — use search to narrow it down</div>` : ''}`;
+}
+
+// Step strip par click — wahi step dropdown me bhi set ho jaata hai (dobara
+// click karne par filter hat jaata hai).
+function pickFMSTrackStep(name) {
+  const sel = document.getElementById('fmsTrackStep');
+  sel.value = sel.value === name ? '' : name;
+  renderFMSTracking();
 }
 
 // ══════════════════════════════════════════════════════
