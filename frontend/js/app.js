@@ -452,7 +452,7 @@ function isPageDisabled(page) { return DISABLED_PAGES[page] === true; }
 // upload modals aur purana data sab jaise the waise maujood rehte hain,
 // isliye false karte hi wapas dikhne lagenge.
 const DISABLED_TASK_ACTIONS = {
-  proofPhoto: true,  // 📷 photo upload + 👁️ view + ♻️ replace
+  proofPhoto: true,  // 📷 photo upload + ♻️ replace (👁️ view hamesha dikhta hai)
   proofVideo: true,  // 🎥 video upload + ▶️ play
   doerRemark: true,  // 📝 "kyun nahi hua" wala doer remark
 };
@@ -1439,10 +1439,15 @@ function renderDashTable(tasks, type) {
       </td></tr>` : '');
 }
 
+// 👁️ Proof dekhne ka button — Dashboard aur All Tasks dono yahi use karte hain
+function proofViewBtn(id, type, desc, side) {
+  return `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-${side}:3px" onclick="viewProof(${id},'${type}','${desc}')" title="View proof">👁️</button>`;
+}
 // Dashboard ke pending table ke liye proof + done buttons (All Tasks jaise hi rules)
 function dashProofBtns(t) {
-  if (isTaskActionDisabled('proofPhoto')) return '';
   const desc = (t.description||t.desc||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+  // Upload/replace band ho tab bhi Done modal se lagi photo dikhni chahiye
+  if (isTaskActionDisabled('proofPhoto')) return t.has_proof ? proofViewBtn(t.id, t.type, desc, 'right') : '';
   // Completed card ki wajah se ab yahan done tasks bhi aa sakte hain — un par
   // upload/replace nahi dikhate, sirf dekhne wala button. All Tasks page par
   // pehle se yahi niyam hai.
@@ -1452,7 +1457,7 @@ function dashProofBtns(t) {
     return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',false)" title="Attach proof — photo or PDF (optional)">📎</button>`;
   }
   // Photo lag chuki hai — ab camera ki jagah 👁 (dekhne ke liye)
-  const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-right:3px" onclick="viewProof(${t.id},'${t.type}','${desc}')" title="View proof">👁️</button>`;
+  const view = proofViewBtn(t.id, t.type, desc, 'right');
   const replace = (done || t.proof_replaced == 1) ? ''
     : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-right:3px" onclick="uploadProof(${t.id},'${t.type}',true)" title="Replace proof (allowed only once)">♻️</button>`;
   return view + replace;
@@ -1938,14 +1943,15 @@ function renderTasksTable() {
 
   // 📷 Proof photo — optional. Upload -> View + ek baar Replace allowed.
   function proofBtns(t) {
-    if (isTaskActionDisabled('proofPhoto')) return '';
     const desc = (t.description||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    // Upload/replace band ho tab bhi Done modal se lagi photo dikhni chahiye
+    if (isTaskActionDisabled('proofPhoto')) return t.has_proof ? proofViewBtn(t.id, tasksType, desc, 'left') : '';
     if (!t.has_proof) {
       if (t.status === 'completed') return '';
       return `<button class="action-btn" style="background:color-mix(in srgb,var(--warning) 12%,transparent);color:var(--warning);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',false)" title="Attach proof — photo or PDF (optional)">📎</button>`;
     }
     // Photo lag chuki hai — ab camera ki jagah 👁 (dekhne ke liye)
-    const view = `<button class="action-btn" style="background:color-mix(in srgb,var(--success) 10%,transparent);color:var(--success);padding:4px 7px;margin-left:3px" onclick="viewProof(${t.id},'${tasksType}','${desc}')" title="View proof">👁️</button>`;
+    const view = proofViewBtn(t.id, tasksType, desc, 'left');
     const replace = (t.status === 'completed' || t.proof_replaced == 1) ? ''
       : `<button class="action-btn" style="background:var(--muted);color:var(--chart-1);padding:4px 7px;margin-left:3px" onclick="uploadProof(${t.id},'${tasksType}',true)" title="Replace proof (allowed only once)">♻️</button>`;
     return view + replace;
@@ -1967,8 +1973,8 @@ function renderTasksTable() {
     return isAdmin ? `
       <button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'${tasksType}')" title="Edit">✏️</button>
       <button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'${tasksType}')" title="Delete">🗑</button>
-      <button class="action-btn" style="background:var(--accent);color:var(--accent-foreground);padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
       ${proofAllBtns(t)}
+      <button class="action-btn" style="background:var(--accent);color:var(--accent-foreground);padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${tasksType}')" title="Comments">💬</button>
       ${remarkBtn(t, tasksType, 'left')}
       ${!isCompleted && !isWaiting ? doneBtn(t) : ''}
       ${!isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${tasksType}')">Revise</button>` : ''}
@@ -4289,7 +4295,7 @@ async function openMISDetail(userId, userName) {
         // Time bhi dikhao (kis waqt done hua) + proof photo ka link
         const time = t.completed_at_ts ? t.completed_at_ts.split(' ').slice(1).join(' ') : ''; // "02:24 PM"
         const pdesc = (t.description||'').replace(/'/g,"\\'").replace(/"/g,'&quot;');
-        const proof = (t.has_proof && !isTaskActionDisabled('proofPhoto')) ? ` <span onclick="viewProof(${t.id},'${misType}','${pdesc}')" title="View proof" style="cursor:pointer">👁️</span>` : '';
+        const proof = t.has_proof ? ` <span onclick="viewProof(${t.id},'${misType}','${pdesc}')" title="View proof" style="cursor:pointer">👁️</span>` : '';
         // Video sirf Admin/HR ko — baaki kisi ko play icon bhi nahi
         const canVideo = ME && (ME.role === 'admin' || isHR()) && !isTaskActionDisabled('proofVideo');
         const vproof = (t.has_video && canVideo) ? ` <span onclick="viewProofVideo(${t.id},'${misType}','${pdesc}')" title="Play proof video" style="cursor:pointer">▶️</span>` : '';

@@ -1,6 +1,6 @@
 // Hostinger par seedha upload karne layak ZIP banao.
 //
-//   npm run zip                 → project folder me Grover-Tex-Prints-Task-Manager.zip
+//   npm run zip                 → project folder me grovertaskmanager.zip
 //                                 (VS Code me dikhti hai) + Desktop par copy
 //   npm run zip -- --out D:\x   → sirf us folder me
 //
@@ -25,7 +25,7 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const ZIP_NAME = 'Grover-Tex-Prints-Task-Manager.zip';
+const ZIP_NAME = 'grovertaskmanager.zip';
 
 // ── CLI ──────────────────────────────────────────────
 const argv = process.argv.slice(2);
