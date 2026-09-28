@@ -1910,8 +1910,14 @@ function renderTasksTable() {
   const dateTo = document.getElementById('tasksDateTo')?.value || '';
   const container = document.getElementById('tasksContent');
   const today = new Date().toISOString().split('T')[0];
+  // Checklist ke future tasks sirf ek din pehle dikhte hain (kal tak). Server
+  // saal bhar aage ke daily tasks bhej deta hai (Transfer/Bulk Delete ko
+  // chahiye), par list me wo sab ek saath bhar jaate the.
+  const _tm = new Date(); _tm.setDate(_tm.getDate() + 1);
+  const tomorrow = `${_tm.getFullYear()}-${String(_tm.getMonth() + 1).padStart(2, '0')}-${String(_tm.getDate()).padStart(2, '0')}`;
 
   let tasks = allTasksData.filter(t => {
+    if (tasksType === 'checklist' && t.status !== 'completed' && t.due_date && t.due_date > tomorrow) return false;
     const matchStatus =
       taskStatusFilter === 'all' ? true :
       taskStatusFilter === 'pending' ? (t.status === 'pending' && (!t.due_date || t.due_date <= today)) :
