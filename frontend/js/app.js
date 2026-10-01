@@ -3321,6 +3321,41 @@ async function deleteUser(id) {
 let _fmsTrack = null;       // server ka poora jawab
 let _fmsTrackTab = 'all';   // chuna hua FMS id, ya 'all'
 
+// 3D Print FMS — ZIP upload hote hi Tracking me dikhe. Server wali migration
+// (007_fms_3d_print.sql) sirf app restart par chalti hai; ZIP extract karte hi
+// nayi frontend files to mil jaati hain par server purana code chalata rehta
+// hai. Isliye admin ke page kholte hi browser ye FMS server ke maujooda
+// /api/fms (FMS Admin wala) se bana deta hai. Pehle se ho to kuch nahi karta,
+// aur migration bhi pehle se bana dekh kar ruk jaati hai — dobara nahi banta.
+const FMS_3D_PRINT = {
+  fmsName: '3D Print', sheetName: '3D Print',
+  sheetId: '1mrRRKT9oIfdDKC9kuhKZQ7LvY5rh30_jjUBZxodQhG8', headerRow: 6,
+  steps: [
+    ['GREY OPEN', 'K', 'L'], ['PEACHING', 'O', 'P'], ['HEATSET STANTER', 'S', 'T'],
+    ['PRINTING', 'Y', 'Z'], ['PRINTING 2', 'AD', 'AE'], ['WASHING', 'AI', 'AJ'],
+    ['FINISH STANTER', 'AO', 'AP'], ['FOLDING', 'AT', 'AU'], ['DISPACH', 'AZ', 'BA'],
+  ],
+};
+let _fms3DPrintTried = false;   // ek page-load me ek hi koshish
+async function _ensure3DPrintFMS(track) {
+  if (_fms3DPrintTried || !ME || ME.role !== 'admin') return false;   // /api/fms sirf admin ke liye hai
+  _fms3DPrintTried = true;
+  const F = FMS_3D_PRINT;
+  if ((track.fmsList || []).some(f => String(f.name || '').trim().toLowerCase() === '3d print')) return false;
+  const list = await api('/api/fms');
+  if (!Array.isArray(list)) return false;
+  if (list.some(f => f.sheet_id === F.sheetId && f.sheet_name === F.sheetName)) return false;
+  const res = await api('/api/fms', 'POST', {
+    fmsName: F.fmsName, sheetName: F.sheetName, sheetId: F.sheetId,
+    headerRow: F.headerRow, totalSteps: F.steps.length,
+    steps: F.steps.map(([stepName, planCol, actualCol]) => ({
+      stepName, planCol, actualCol, extraInput: 'no', extraCol: '', showCols: [],
+      delayReasonCol: '', doerNameCol: '', doers: [],
+    })),
+  });
+  return !!(res && res.success);
+}
+
 async function loadFMSTracking(force) {
   const box = document.getElementById('fmsTrackContainer');
   if (_fmsTrack && !force) { renderFMSTracking(); return; }   // page dobara khulne par turant
@@ -3328,11 +3363,15 @@ async function loadFMSTracking(force) {
   document.getElementById('fmsTrackCards').style.display = 'none';
   document.getElementById('fmsTrackStepStrip').innerHTML = '';
 
-  const r = await api('/api/fms-tracking');
+  let r = await api('/api/fms-tracking');
   if (r.error) {
     _fmsTrack = null;
     box.innerHTML = `<div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">${escapeHtml(r.error)}</div>`;
     return;
+  }
+  if (await _ensure3DPrintFMS(r)) {
+    const again = await api('/api/fms-tracking');
+    if (!again.error) r = again;
   }
   _fmsTrack = r;
   const t = new Date();
