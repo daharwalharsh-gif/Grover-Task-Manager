@@ -3531,6 +3531,72 @@ function renderFMSTracking() {
     </div>`;
 }
 
+// 📄 PDF — jo abhi screen par hai wahi (chuna hua FMS + filter), saari rows
+// (screen 1000 par rukti hai, PDF nahi). Columns bhi screen wale hi.
+async function downloadFMSTrackingPDF() {
+  if (!_fmsTrack) { showToast('Data is still loading', 'error'); return; }
+  const keep = _fmsTrackShown;
+  if (!keep.length) { showToast('No records to export', 'error'); return; }
+  const one = _fmsTrackOne();
+  const MAX_INFO = 5;
+  const heads = one ? one.infoHeaders.slice(0, MAX_INFO) : ['FMS', 'Record'];
+  const statusText = (row, st) => st.key === 'done' ? 'Finished'
+    : st.key === 'late' ? `${row.overdueDays} day${row.overdueDays > 1 ? 's' : ''} late` : 'Running';
+  const rows = keep.map(({ d, row, st }) => {
+    const info = one
+      ? Array.from({ length: heads.length }, (_, n) => row.info[n] || '—')
+      : [d.fmsName, row.info.filter(Boolean).slice(0, 3).join(' · ') || '—'];
+    const at = st.key === 'done' ? 'All steps done'
+      : `${row.currentStep} (Step ${row.currentStepIndex + 1} of ${row.totalSteps}${row.currentPlanned ? ', planned ' + String(row.currentPlanned).split(' ')[0] : ''})`;
+    return { cells: [...info, at, `${row.doneCount} of ${row.totalSteps}`, statusText(row, st)], tone: st.key };
+  });
+
+  const q = (document.getElementById('fmsTrackSearch').value || '').trim();
+  const stepF = document.getElementById('fmsTrackStep').value;
+  const statusSel = document.getElementById('fmsTrackStatus');
+  const filters = [
+    stepF ? `Step: ${stepF === '__done' ? 'Finished' : stepF}` : '',
+    statusSel.value ? `Status: ${statusSel.options[statusSel.selectedIndex].text}` : '',
+    q ? `Search: "${q}"` : '',
+  ].filter(Boolean).join('  ·  ');
+  const done = keep.filter(k => k.st.key === 'done').length;
+  const late = keep.filter(k => k.st.key === 'late').length;
+  const title = one ? one.fmsName : 'All FMS';
+
+  const btn = document.getElementById('fmsTrackPdfBtn');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Generating…';
+  try {
+    const res = await fetch('/api/fms-tracking/pdf', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title, filters, rows,
+        columns: [...heads, 'Currently At', 'Steps Done', 'Status'],
+        summary: { total: keep.length, running: keep.length - done, finished: done, late },
+      }),
+    });
+    if (!res.ok) {
+      let msg = 'Failed to generate PDF';
+      try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}
+      showToast(msg, 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `FMS-Tracking-${title.replace(/[^A-Za-z0-9_-]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showToast('✅ PDF downloaded!');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
 // Step strip / dropdown ka filter — dobara click karne par hat jaata hai.
 function pickFMSTrackStep(name) {
   const sel = document.getElementById('fmsTrackStep');

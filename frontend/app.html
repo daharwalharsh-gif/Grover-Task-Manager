@@ -577,7 +577,10 @@
   <div id="page-fms-tracking" class="page">
     <div class="page-header">
       <div style="font-size:13px;color:var(--muted-foreground)" id="fmsTrackUpdated"></div>
-      <button class="btn btn-outline btn-sm" onclick="loadFMSTracking(true)">🔄 Refresh</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" id="fmsTrackPdfBtn" onclick="downloadFMSTrackingPDF()">📄 PDF</button>
+        <button class="btn btn-outline btn-sm" onclick="loadFMSTracking(true)">🔄 Refresh</button>
+      </div>
     </div>
 
     <!-- FMS tabs — sheet ke har FMS ke liye ek (Bright Print / Brightdye / Lycra) -->

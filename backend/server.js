@@ -3576,6 +3576,117 @@ app.get('/api/fms-tracking', requireAuth, async (req, res) => {
   }
 });
 
+// FMS Tracking ka PDF — jo screen par dikh raha hai (chuna hua FMS tab +
+// search/step/status filter) wahi rows browser bhejta hai. Sheet dobara nahi
+// padhte: filter browser me lagte hain, aur PDF ko screen se mel khana chahiye.
+app.post('/api/fms-tracking/pdf', requireAuth, async (req, res) => {
+  try {
+    if (!['admin', 'hod', 'pc'].includes(req.session.role)) return res.status(403).json({ error: 'Not allowed' });
+    const b = req.body || {};
+    const cut = (v, n) => String(v == null ? '' : v).slice(0, n);
+    const columns = (Array.isArray(b.columns) ? b.columns : []).slice(0, 12).map(c => cut(c, 60));
+    const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 20000).map(r => ({
+      cells: (Array.isArray(r.cells) ? r.cells : []).slice(0, columns.length).map(c => cut(c, 200)),
+      tone: ['done', 'late', 'running'].includes(r.tone) ? r.tone : 'running',
+    }));
+    if (!columns.length || !rows.length) return res.status(400).json({ error: 'Nothing to export' });
+    const title = cut(b.title, 80) || 'FMS';
+    const filters = cut(b.filters, 300);
+    const sm = b.summary || {};
+
+    const PDFDocument = require('pdfkit');
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30, bufferPages: true });
+    // Inter wahi font hai jo MIS image use karti hai; na mile to Helvetica
+    let R = 'Helvetica', B = 'Helvetica-Bold';
+    try {
+      const dir = path.join(__dirname, '..', 'node_modules', '@fontsource', 'inter', 'files');
+      doc.registerFont('Inter', path.join(dir, 'inter-latin-400-normal.woff'));
+      doc.registerFont('InterBold', path.join(dir, 'inter-latin-700-normal.woff'));
+      R = 'Inter'; B = 'InterBold';
+    } catch (_) {}
+
+    const safe = title.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'FMS';
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="FMS-Tracking-${safe}-${stamp}.pdf"`);
+    doc.pipe(res);
+
+    const X = 30, W = doc.page.width - 60, BOTTOM = doc.page.height - 40;
+    const FS = 8, ROW_H = 17, PAD = 5;
+
+    // Column chaudai: content ke hisaab se, phir poori page width me fit
+    doc.font(R).fontSize(FS);
+    const want = columns.map((c, i) => {
+      doc.font(B); let w = doc.widthOfString(c.toUpperCase());   // heading upper-case me chhapti hai
+      doc.font(R);
+      for (const r of rows.slice(0, 400)) w = Math.max(w, doc.widthOfString(r.cells[i] || ''));
+      return Math.min(Math.max(w + PAD * 2, 45), 230);
+    });
+    const scale = W / want.reduce((a, b2) => a + b2, 0);
+    const widths = want.map(w => w * scale);
+
+    // Ek line me fit karo, lamba ho to … laga do
+    const fit = (s, w) => {
+      s = String(s || '');
+      if (doc.widthOfString(s) <= w) return s;
+      let lo = 0, hi = s.length;
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (doc.widthOfString(s.slice(0, m) + '…') <= w) lo = m; else hi = m - 1; }
+      return s.slice(0, lo) + '…';
+    };
+
+    const drawHead = () => {
+      let y = doc.y;
+      doc.rect(X, y, W, ROW_H).fill('#eef0f4');
+      doc.fillColor('#475467').font(B).fontSize(FS);
+      let x = X;
+      columns.forEach((c, i) => {
+        doc.text(fit(c.toUpperCase(), widths[i] - PAD * 2), x + PAD, y + 5, { lineBreak: false });
+        x += widths[i];
+      });
+      doc.y = y + ROW_H;
+    };
+
+    // ── Upar: naam, filter, ginti ──
+    doc.fillColor('#111827').font(B).fontSize(16).text(`FMS Tracking — ${title}`, X, 30);
+    doc.fillColor('#667085').font(R).fontSize(9)
+      .text(`${BRAND.company || ''}  ·  Generated ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' })}${filters ? '  ·  ' + filters : ''}`, X, doc.y + 2, { width: W });
+    doc.moveDown(0.4);
+    doc.fillColor('#111827').font(B).fontSize(10)
+      .text(`Total ${sm.total ?? rows.length}   ·   Still Running ${sm.running ?? '—'}   ·   Finished ${sm.finished ?? '—'}   ·   Late ${sm.late ?? '—'}`, X, doc.y);
+    doc.moveDown(0.6);
+    drawHead();
+
+    const TONE = { done: '#067647', late: '#d92d20', running: '#475467' };
+    rows.forEach((r, n) => {
+      if (doc.y + ROW_H > BOTTOM) { doc.addPage(); doc.y = 30; drawHead(); }
+      const y = doc.y;
+      if (n % 2) doc.rect(X, y, W, ROW_H).fill('#f8f9fb');
+      let x = X;
+      r.cells.forEach((c, i) => {
+        const last = i === columns.length - 1;
+        doc.fillColor(last ? TONE[r.tone] : '#1f2937').font(last ? B : R).fontSize(FS)
+          .text(fit(c, widths[i] - PAD * 2), x + PAD, y + 5, { lineBreak: false });
+        x += widths[i];
+      });
+      doc.moveTo(X, y + ROW_H).lineTo(X + W, y + ROW_H).lineWidth(0.4).strokeColor('#e4e7ec').stroke();
+      doc.y = y + ROW_H;
+    });
+
+    // Har page ke neeche page number
+    const range = doc.bufferedPageRange();
+    for (let i = 0; i < range.count; i++) {
+      doc.switchToPage(range.start + i);
+      doc.page.margins.bottom = 0;   // warna margin ke neeche likhte hi pdfkit khaali page jod deta hai
+      doc.fillColor('#98a2b3').font(R).fontSize(8)
+        .text(`Page ${i + 1} of ${range.count}`, X, doc.page.height - 25, { width: W, align: 'right', lineBreak: false });
+    }
+    doc.end();
+  } catch (err) {
+    console.error('fms-tracking pdf error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Could not create the PDF' });
+  }
+});
+
 // Mark row as done — writes actual (date only) + delay reason to sheet
 app.post('/api/fms-tasks/:fmsId/steps/:stepId/done', requireAuth, async (req, res) => {
   try {
