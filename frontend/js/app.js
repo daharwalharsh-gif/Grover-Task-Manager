@@ -3327,21 +3327,53 @@ let _fmsTrackTab = 'all';   // chuna hua FMS id, ya 'all'
 // hai. Isliye admin ke page kholte hi browser ye FMS server ke maujooda
 // /api/fms (FMS Admin wala) se bana deta hai. Pehle se ho to kuch nahi karta,
 // aur migration bhi pehle se bana dekh kar ruk jaati hai — dobara nahi banta.
+//
+// Sheet me laal kiye hue steps (PEACHING, HEATSET STANTER, Step5 jise PRINTING 2
+// kaha tha, WASHING) tracking me nahi chahiye — sirf ye 5 rehte hain.
 const FMS_3D_PRINT = {
   fmsName: '3D Print', sheetName: '3D Print',
   sheetId: '1mrRRKT9oIfdDKC9kuhKZQ7LvY5rh30_jjUBZxodQhG8', headerRow: 6,
   steps: [
-    ['GREY OPEN', 'K', 'L'], ['PEACHING', 'O', 'P'], ['HEATSET STANTER', 'S', 'T'],
-    ['PRINTING', 'Y', 'Z'], ['PRINTING 2', 'AD', 'AE'], ['WASHING', 'AI', 'AJ'],
-    ['FINISH STANTER', 'AO', 'AP'], ['FOLDING', 'AT', 'AU'], ['DISPACH', 'AZ', 'BA'],
+    ['GREY OPEN', 'K', 'L'], ['PRINTING', 'Y', 'Z'], ['FINISH STANTER', 'AO', 'AP'],
+    ['FOLDING', 'AT', 'AU'], ['DISPACH', 'AZ', 'BA'],
   ],
 };
+// Pehle 9 step ke saath bana tha (migration 007 / pichhla page code). Laal
+// wale tabhi hatte hain jab FMS abhi bhi bilkul inhi 9 par ho — FMS Admin se
+// baad me kiya koi badlav kabhi palta nahi jaata. Migration 008 bhi yahi karti hai.
+const FMS_3D_PRINT_OLD_STEPS = 'GREY OPEN|PEACHING|HEATSET STANTER|PRINTING|PRINTING 2|WASHING|FINISH STANTER|FOLDING|DISPACH';
 let _fms3DPrintTried = false;   // ek page-load me ek hi koshish
 async function _ensure3DPrintFMS(track) {
   if (_fms3DPrintTried || !ME || ME.role !== 'admin') return false;   // /api/fms sirf admin ke liye hai
   _fms3DPrintTried = true;
   const F = FMS_3D_PRINT;
-  if ((track.fmsList || []).some(f => String(f.name || '').trim().toLowerCase() === '3d print')) return false;
+  const mine = (track.data || []).find(d => String(d.fmsName || '').trim().toLowerCase() === '3d print');
+  if (mine) {
+    if ((mine.steps || []).join('|') !== FMS_3D_PRINT_OLD_STEPS) return false;
+    const cur = await api(`/api/fms/${mine.fmsId}`);
+    if (!cur || cur.error || !cur.sheet || !Array.isArray(cur.steps)) return false;
+    if (cur.sheet.sheet_id !== F.sheetId || cur.sheet.sheet_name !== F.sheetName) return false;
+    if (cur.steps.map(s => s.step_name).join('|') !== FMS_3D_PRINT_OLD_STEPS) return false;
+    const keep = new Set(F.steps.map(s => s[0]));
+    // PUT saare steps badal deta hai — bache hue steps ki baaki setting
+    // (doers, extra rows, show cols) jaisi thi waisi hi wapas bhejo.
+    const res = await api(`/api/fms/${mine.fmsId}`, 'PUT', {
+      fmsName: cur.sheet.fms_name, sheetName: cur.sheet.sheet_name,
+      sheetId: cur.sheet.sheet_id, headerRow: cur.sheet.header_row,
+      steps: cur.steps.filter(s => keep.has(s.step_name)).map(s => ({
+        stepName: s.step_name, planCol: s.plan_col, actualCol: s.actual_col,
+        extraInput: s.extra_input || 'no', extraCol: s.extra_col || '',
+        showCols: s.show_cols_parsed || [],
+        delayReasonCol: s.delay_reason_col || '', doerNameCol: s.doer_name_col || '',
+        doers: (s.doers || []).map(d => d.user_id),
+        extraRows: (s.extraRows || []).map(r => ({
+          label: r.row_label, col_letter: r.col_letter, field_type: r.field_type,
+          dropdown_options: r.dropdown_options, required: r.required,
+        })),
+      })),
+    });
+    return !!(res && res.success);
+  }
   const list = await api('/api/fms');
   if (!Array.isArray(list)) return false;
   if (list.some(f => f.sheet_id === F.sheetId && f.sheet_name === F.sheetName)) return false;
@@ -3390,6 +3422,8 @@ function renderFMSTrackTabs() {
   if (!_fmsTrack) { wrap.innerHTML = ''; return; }
   const tabs = [{ id: 'all', name: 'All FMS' }]
     .concat(_fmsTrack.data.map(d => ({ id: String(d.fmsId), name: d.fmsName, error: d.error, count: d.rows.length })));
+  const disp = _fmsDispatchSource();
+  if (disp && !disp.error) tabs.push({ id: 'dispatch', name: `🚚 ${disp.fmsName} Dispatch`, count: disp.rows.filter(_fmsIsDispatched).length });
   wrap.innerHTML = tabs.map(t => `
     <button class="fms-name-tab ${String(_fmsTrackTab) === t.id ? 'active' : ''}"
             onclick="setFMSTrackTab('${t.id}')" title="${t.error ? escapeHtml(t.error) : ''}">
@@ -3418,7 +3452,25 @@ function fillFMSTrackSteps() {
 
 function _fmsTrackOne() {
   if (!_fmsTrack || _fmsTrackTab === 'all') return null;
+  if (_fmsTrackTab === 'dispatch') return _fmsDispatchSource();
   return _fmsTrack.data.find(d => String(d.fmsId) === String(_fmsTrackTab)) || null;
+}
+
+// 🚚 Dispatch tab — 3D Print ke wo records jinke AAKHRI step (DISPACH) ka
+// Actual bhar chuka hai. Columns 3D Print wale hi; row par click karte hi
+// poori details (journey popup); PDF button yahi list nikalta hai.
+const FMS_DISPATCH_OF = '3d print';
+function _fmsDispatchSource() {
+  if (!_fmsTrack) return null;
+  return _fmsTrack.data.find(d => String(d.fmsName || '').trim().toLowerCase() === FMS_DISPATCH_OF) || null;
+}
+function _fmsIsDispatched(row) {
+  const s = row.stages || [];
+  return s.length > 0 && s[s.length - 1].status === 'done';
+}
+function _fmsDispatchedOn(row) {
+  const s = row.stages || [];
+  return s.length ? String(s[s.length - 1].actual || '').split(' ')[0] : '';
 }
 
 function clearFMSTrackFilters() {
@@ -3463,12 +3515,16 @@ function renderFMSTracking() {
   const q = (document.getElementById('fmsTrackSearch').value || '').toLowerCase().trim();
   const stepF = document.getElementById('fmsTrackStep').value;
   const statusF = document.getElementById('fmsTrackStatus').value;
-  const sheets = _fmsTrackTab === 'all' ? _fmsTrack.data : _fmsTrack.data.filter(d => String(d.fmsId) === String(_fmsTrackTab));
+  const isDispatch = _fmsTrackTab === 'dispatch';
+  const sheets = _fmsTrackTab === 'all' ? _fmsTrack.data
+    : isDispatch ? [_fmsDispatchSource()].filter(Boolean)
+    : _fmsTrack.data.filter(d => String(d.fmsId) === String(_fmsTrackTab));
 
   // ── filter ──
   const keep = [];
   for (const d of sheets) {
     for (const row of d.rows) {
+      if (isDispatch && !_fmsIsDispatched(row)) continue;
       const st = _fmsRowState(row);
       if (stepF === '__done' && st.key !== 'done') continue;
       if (stepF && stepF !== '__done' && row.currentStep !== stepF) continue;
@@ -3497,7 +3553,7 @@ function renderFMSTracking() {
   const strip = document.getElementById('fmsTrackStepStrip');
   const label = document.getElementById('fmsTrackStripLabel');
   const one = _fmsTrackOne();
-  if (one && one.steps.length) {
+  if (one && one.steps.length && !isDispatch) {
     const counts = {};
     keep.forEach(k => { if (k.st.key !== 'done') counts[k.row.currentStep] = (counts[k.row.currentStep] || 0) + 1; });
     label.textContent = 'How many records are waiting at each step — click to filter';
@@ -3536,7 +3592,10 @@ function renderFMSTracking() {
         + `<td style="font-size:12.5px">${escapeHtml(row.info.filter(Boolean).slice(0, 3).join(' · ') || '—')}</td>`;
 
     // "Abhi kahan hai" — sabse kaam ki cheez, isliye sabse saaf.
-    const stepCell = st.key === 'done'
+    // Dispatch tab me sab dispatch ho chuke hain — wahan dispatch ki date.
+    const stepCell = isDispatch
+      ? `<span style="font-weight:700;color:var(--success)">${escapeHtml(_fmsDispatchedOn(row) || '—')}</span>`
+      : st.key === 'done'
       ? `<span style="font-weight:700;color:var(--success)">All steps done</span>`
       : `<div style="font-weight:700;font-size:13px">${escapeHtml(row.currentStep)}</div>
          <div style="font-size:11px;color:var(--muted-foreground)">Step ${row.currentStepIndex + 1} of ${row.totalSteps}${row.currentPlanned ? ' · planned ' + escapeHtml(String(row.currentPlanned).split(' ')[0]) : ''}</div>`;
@@ -3557,7 +3616,7 @@ function renderFMSTracking() {
       <table style="min-width:820px">
         <thead><tr>
           ${heads.map(h => `<th>${escapeHtml(h)}</th>`).join('')}
-          <th style="white-space:nowrap">Currently At</th>
+          <th style="white-space:nowrap">${isDispatch ? 'Dispatched On' : 'Currently At'}</th>
           <th style="white-space:nowrap">Steps Done</th>
           <th style="white-space:nowrap">Status</th>
         </tr></thead>
@@ -3577,6 +3636,7 @@ async function downloadFMSTrackingPDF() {
   const keep = _fmsTrackShown;
   if (!keep.length) { showToast('No records to export', 'error'); return; }
   const one = _fmsTrackOne();
+  const isDispatch = _fmsTrackTab === 'dispatch';
   const MAX_INFO = 5;
   const heads = one ? one.infoHeaders.slice(0, MAX_INFO) : ['FMS', 'Record'];
   const statusText = (row, st) => st.key === 'done' ? 'Finished'
@@ -3585,7 +3645,8 @@ async function downloadFMSTrackingPDF() {
     const info = one
       ? Array.from({ length: heads.length }, (_, n) => row.info[n] || '—')
       : [d.fmsName, row.info.filter(Boolean).slice(0, 3).join(' · ') || '—'];
-    const at = st.key === 'done' ? 'All steps done'
+    const at = isDispatch ? (_fmsDispatchedOn(row) || '—')
+      : st.key === 'done' ? 'All steps done'
       : `${row.currentStep} (Step ${row.currentStepIndex + 1} of ${row.totalSteps}${row.currentPlanned ? ', planned ' + String(row.currentPlanned).split(' ')[0] : ''})`;
     return { cells: [...info, at, `${row.doneCount} of ${row.totalSteps}`, statusText(row, st)], tone: st.key };
   });
@@ -3600,7 +3661,7 @@ async function downloadFMSTrackingPDF() {
   ].filter(Boolean).join('  ·  ');
   const done = keep.filter(k => k.st.key === 'done').length;
   const late = keep.filter(k => k.st.key === 'late').length;
-  const title = one ? one.fmsName : 'All FMS';
+  const title = one ? `${one.fmsName}${isDispatch ? ' Dispatch' : ''}` : 'All FMS';
 
   const btn = document.getElementById('fmsTrackPdfBtn');
   const orig = btn.textContent;
@@ -3611,7 +3672,7 @@ async function downloadFMSTrackingPDF() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title, filters, rows,
-        columns: [...heads, 'Currently At', 'Steps Done', 'Status'],
+        columns: [...heads, isDispatch ? 'Dispatched On' : 'Currently At', 'Steps Done', 'Status'],
         summary: { total: keep.length, running: keep.length - done, finished: done, late },
       }),
     });
@@ -3651,7 +3712,8 @@ function openFMSJourney(i) {
   const pairs = d.infoHeaders.map((h, n) => [h, row.info[n]]).filter(([, v]) => v);
   document.getElementById('fmsJourneyHead').innerHTML =
     `<strong style="color:var(--foreground)">${escapeHtml(d.fmsName)}</strong> · ${st.label}<br>`
-    + pairs.slice(0, 6).map(([h, v]) => `${escapeHtml(h)}: <strong style="color:var(--foreground)">${escapeHtml(v)}</strong>`).join(' &nbsp;·&nbsp; ');
+    // Dispatch tab se khula ho to saari details (LOT NO bhi), baaki jagah pehli 6
+    + pairs.slice(0, _fmsTrackTab === 'dispatch' ? pairs.length : 6).map(([h, v]) => `${escapeHtml(h)}: <strong style="color:var(--foreground)">${escapeHtml(v)}</strong>`).join(' &nbsp;·&nbsp; ');
 
   document.getElementById('fmsJourneyBody').innerHTML = row.stages.map((s, n) => {
     const isNow = n === row.currentStepIndex;
