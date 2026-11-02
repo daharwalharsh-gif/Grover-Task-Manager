@@ -2110,14 +2110,28 @@ async function updateStatus(id, status, from, type) {
 // Done seedha nahi hota; pehle ye chhota modal khulta hai jisme photo ya PDF
 // laga sakte hain. Lagana ZAROORI NAHI — "Bina file ke Done" wahi kaam karta
 // hai jo pehle seedha Done karta tha.
-let _doneCtx = { id: null, type: null, from: null, dataUrl: null, fileName: '', hasRemark: false };
+// Checklist par ek ki jagah max 5 files (sab optional) — `files` me jama hoti hain.
+const DONE_MAX_FILES = 5;
+let _doneCtx = { id: null, type: null, from: null, dataUrl: null, fileName: '', hasRemark: false, multi: false, files: [] };
 
 function openDoneModal(id, type, from, desc, hasRemark) {
-  _doneCtx = { id, type, from, dataUrl: null, fileName: '', hasRemark: !!hasRemark };
+  const multi = type === 'checklist';
+  _doneCtx = { id, type, from, dataUrl: null, fileName: '', hasRemark: !!hasRemark, multi, files: [] };
   document.getElementById('doneTaskDesc').textContent = desc || '';
-  document.getElementById('doneFileInput').value = '';
-  document.getElementById('doneFileName').textContent = 'No file chosen';
-  document.getElementById('doneFileName').style.color = 'var(--muted-foreground)';
+  const input = document.getElementById('doneFileInput');
+  input.value = '';
+  input.multiple = multi;
+  // .btn ki CSS `hidden` ko daba deti hai, isliye style.display
+  input.style.display = multi ? 'none' : '';
+  document.getElementById('doneAddFileBtn').style.display = multi ? '' : 'none';
+  document.getElementById('doneFileLabel').textContent = multi
+    ? `Proof — up to ${DONE_MAX_FILES} photos or PDFs (optional)`
+    : 'Proof — photo or PDF (optional)';
+  if (multi) renderDoneFiles();
+  else {
+    document.getElementById('doneFileName').textContent = 'No file chosen';
+    document.getElementById('doneFileName').style.color = 'var(--muted-foreground)';
+  }
   document.getElementById('doneRemark').value = '';
   // Remark sirf ek baar likha ja sakta hai — pehle se ho to box dikhana
   // bekaar hai, server waise bhi mana kar dega.
@@ -2127,10 +2141,81 @@ function openDoneModal(id, type, from, desc, hasRemark) {
   document.getElementById('doneModal').classList.add('open');
 }
 
+// Photo compress hoti hai (12MB ki photo bhi ~200KB reh jaati hai);
+// PDF jaisi hai waisi jaati hai, isliye uspar size ki seema lagti hai.
+async function _doneReadFile(file) {
+  if (file.type.startsWith('image/')) return compressImage(file);
+  if (file.size > 5.5 * 1024 * 1024) throw new Error('This PDF is too large (5MB max)');
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error('The file could not be read'));
+    r.onload = () => resolve(r.result);
+    r.readAsDataURL(file);
+  });
+}
+
+// Checklist ki chuni hui files ki list (har ek ke saath ✕ hatane ke liye)
+function renderDoneFiles() {
+  const label = document.getElementById('doneFileName');
+  const files = _doneCtx.files;
+  document.getElementById('doneAddFileBtn').disabled = files.length >= DONE_MAX_FILES;
+  if (!files.length) {
+    label.textContent = 'No file chosen';
+    label.style.color = 'var(--muted-foreground)';
+    return;
+  }
+  label.style.color = 'var(--success)';
+  label.innerHTML = `<div style="color:var(--muted-foreground);margin-bottom:4px">${files.length} of ${DONE_MAX_FILES} added</div>` +
+    files.map((f, i) => `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.isPdf ? '📄' : '🖼'} ${escapeHtml(f.name)}</span>
+      ${f.uploaded ? '<span style="color:var(--muted-foreground)">uploaded</span>'
+        : `<button type="button" onclick="removeDoneFile(${i})" title="Remove" aria-label="Remove ${escapeHtml(f.name)}" style="border:none;background:none;color:var(--destructive);cursor:pointer;font-size:13px;padding:0 4px">✕</button>`}
+    </div>`).join('');
+}
+
+function removeDoneFile(i) {
+  _doneCtx.files.splice(i, 1);
+  renderDoneFiles();
+}
+
 async function onDoneFilePicked(input) {
+  const err = document.getElementById('doneErr');
+  if (_doneCtx.multi) {
+    // Compress ke beech modal kisi aur task ke liye khul jaye to file us task
+    // me na jaye — isliye isi waqt ka ctx pakad kar rakhte hain.
+    const ctx = _doneCtx;
+    err.style.display = 'none';
+    const picked = Array.from(input.files || []);
+    input.value = ''; // dobara wahi file chun sakein, aur agli baar naye jodein
+    // Compress chal raha ho tab Done na dabe — warna aadhi files chhoot jaatin
+    const submitBtn = document.getElementById('doneSubmitBtn');
+    if (picked.length) submitBtn.disabled = true;
+    for (const file of picked) {
+      if (ctx.files.length >= DONE_MAX_FILES) {
+        err.textContent = `Only ${DONE_MAX_FILES} files can be attached — the extra ones were left out`;
+        err.style.display = 'block';
+        break;
+      }
+      const isPdf = file.type === 'application/pdf';
+      if (!isPdf && !file.type.startsWith('image/')) {
+        err.textContent = 'Only a photo (JPG/PNG) or a PDF can be attached';
+        err.style.display = 'block';
+        continue;
+      }
+      try {
+        const dataUrl = await _doneReadFile(file);
+        if (ctx.files.length < DONE_MAX_FILES) ctx.files.push({ name: file.name, isPdf, dataUrl, uploaded: false });
+      } catch (e) {
+        err.textContent = e.message;
+        err.style.display = 'block';
+      }
+    }
+    if (ctx === _doneCtx) { submitBtn.disabled = false; renderDoneFiles(); }
+    return;
+  }
+
   const file = input.files && input.files[0];
   const label = document.getElementById('doneFileName');
-  const err = document.getElementById('doneErr');
   err.style.display = 'none';
   if (!file) { _doneCtx.dataUrl = null; label.textContent = 'No file chosen'; return; }
 
@@ -2144,19 +2229,7 @@ async function onDoneFilePicked(input) {
     return;
   }
   try {
-    // Photo compress hoti hai (12MB ki photo bhi ~200KB reh jaati hai);
-    // PDF jaisi hai waisi jaati hai, isliye uspar size ki seema lagti hai.
-    if (isImg) {
-      _doneCtx.dataUrl = await compressImage(file);
-    } else {
-      if (file.size > 5.5 * 1024 * 1024) throw new Error('This PDF is too large (5MB max)');
-      _doneCtx.dataUrl = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onerror = () => reject(new Error('The file could not be read'));
-        r.onload = () => resolve(r.result);
-        r.readAsDataURL(file);
-      });
-    }
+    _doneCtx.dataUrl = await _doneReadFile(file);
     _doneCtx.fileName = file.name;
     label.textContent = `${isPdf ? '📄' : '🖼'} ${file.name}`;
     label.style.color = 'var(--success)';
@@ -2173,11 +2246,28 @@ async function onDoneFilePicked(input) {
 // tab user ke paas na proof hota na use badalne ka mauka (task done hone par
 // dono buttons chhup jaate hain).
 async function submitDone() {
-  const { id, type, from, dataUrl, hasRemark } = _doneCtx;
+  const { id, type, from, dataUrl, hasRemark, multi, files } = _doneCtx;
   const btn = document.getElementById('doneSubmitBtn');
   const err = document.getElementById('doneErr');
   err.style.display = 'none';
   btn.disabled = true;
+
+  // Checklist: files ek-ek karke. Jo chadh gayi wo `uploaded` — beech me fail
+  // ho to dobara dabane par sirf baaki wali jaati hain (dohri nahi banti).
+  if (multi) {
+    const pending = files.filter(f => !f.uploaded);
+    for (let i = 0; i < pending.length; i++) {
+      showToast(`⏳ Uploading proof ${i + 1} of ${pending.length}…`);
+      const up = await api(`/api/tasks/${id}/proof-files`, 'POST', { image: pending[i].dataUrl });
+      if (up.error) {
+        err.textContent = up.error; err.style.display = 'block';
+        btn.disabled = false;
+        renderDoneFiles();
+        return;
+      }
+      pending[i].uploaded = true;
+    }
+  }
 
   if (dataUrl) {
     showToast('⏳ Uploading proof…');
@@ -3928,32 +4018,54 @@ async function viewProof(taskId, type, taskDesc) {
   const pdf = document.getElementById('proofViewPdf');
   const loading = document.getElementById('proofViewLoading');
   const dl = document.getElementById('proofViewDownload');
+  const thumbs = document.getElementById('proofViewThumbs');
   img.style.display = 'none';
   pdf.style.display = 'none';
   pdf.removeAttribute('src');
   loading.style.display = 'block';
   loading.textContent = 'Loading…';
   dl.style.display = 'none';
+  thumbs.style.display = 'none';
+  thumbs.innerHTML = '';
   document.getElementById('proofViewModal').classList.add('open');
 
   const r = await api(`/api/tasks/${taskId}/proof?type=${type}`);
   if (r.error) { loading.textContent = r.error; return; }
 
+  const images = (r.images && r.images.length) ? r.images : [r.image];
+  const safeName = (taskDesc || 'task').replace(/[^\w\s-]/g, '').trim().slice(0, 40) || 'task';
   // Proof photo bhi ho sakti hai aur PDF bhi — data-URL ke prefix se pehchan
   // lete hain. PDF ko <img> me daalne par sirf toota hua icon dikhta.
-  const isPdf = /^data:application\/pdf/.test(r.image || '');
-  const safeName = (taskDesc || 'task').replace(/[^\w\s-]/g, '').trim().slice(0, 40) || 'task';
-  if (isPdf) {
-    pdf.src = r.image;
-    pdf.style.display = '';
-    dl.download = `proof_${safeName}.pdf`;
-  } else {
-    img.src = r.image;
-    img.style.display = 'inline-block';
-    dl.download = `proof_${safeName}.jpg`;
+  const show = i => {
+    const src = images[i];
+    const isPdf = /^data:application\/pdf/.test(src || '');
+    const suffix = images.length > 1 ? `_${i + 1}` : '';
+    img.style.display = 'none';
+    pdf.style.display = 'none';
+    if (isPdf) {
+      pdf.src = src;
+      pdf.style.display = '';
+      dl.download = `proof_${safeName}${suffix}.pdf`;
+    } else {
+      img.src = src;
+      img.style.display = 'inline-block';
+      dl.download = `proof_${safeName}${suffix}.jpg`;
+    }
+    dl.href = src;
+    thumbs.querySelectorAll('button').forEach((b, j) => {
+      b.className = 'btn ' + (j === i ? 'btn-primary' : 'btn-outline');
+      b.setAttribute('aria-pressed', j === i ? 'true' : 'false');
+    });
+  };
+  if (images.length > 1) {
+    thumbs.innerHTML = images.map((src, i) =>
+      `<button type="button" class="btn btn-outline" style="padding:4px 10px;font-size:12px">${/^data:application\/pdf/.test(src || '') ? '📄' : '🖼'} ${i + 1}</button>`
+    ).join('');
+    thumbs.querySelectorAll('button').forEach((b, i) => { b.onclick = () => show(i); });
+    thumbs.style.display = 'flex';
   }
   loading.style.display = 'none';
-  dl.href = r.image;
+  show(0);
   dl.style.display = '';
 }
 

@@ -1715,7 +1715,54 @@ app.get('/api/tasks/:id/proof', requireAuth, async (req, res) => {
     const canSeeOthers = role === 'admin' || role === 'hod' || role === 'pc';
     if (!canSeeOthers && task.assigned_to !== req.session.userId) return res.status(403).json({ error: 'Not allowed' });
     if (!task.proof_image) return res.status(404).json({ error: 'No proof photo uploaded for this task' });
-    res.json({ image: task.proof_image, replaced: task.proof_replaced });
+    // Checklist par 2nd–5th file alag table me hoti hai — saari ek saath bhejo.
+    // Table na ho (migration abhi nahi lagi) to sirf pehli file.
+    const images = [task.proof_image];
+    if (table === 'checklist_tasks') {
+      try {
+        const [extra] = await db.query('SELECT image FROM checklist_proof_files WHERE task_id=? ORDER BY id', [req.params.id]);
+        images.push(...extra.map(e => e.image));
+      } catch (e) { console.error('  ⚠️ checklist_proof_files read:', e.message); }
+    }
+    res.json({ image: task.proof_image, replaced: task.proof_replaced, images });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Server error. Please try again.' }); }
+});
+
+// ── Checklist: Done ke waqt ek-ek karke max 5 proof files jodo ──
+// Replace nahi karta, sirf jodta hai: pehli file proof_image me (taaki has_proof
+// aur 👁️ pehle jaise chalein), baaki checklist_proof_files me.
+const CHECKLIST_PROOF_MAX = 5;
+app.post('/api/tasks/:id/proof-files', requireAuth, async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: 'Photo required' });
+
+    const [rows] = await db.query('SELECT id, assigned_to, proof_image IS NOT NULL AS has_proof FROM checklist_tasks WHERE id=?', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
+    const task = rows[0];
+
+    const isAdmin = req.session.role === 'admin';
+    if (!isAdmin && task.assigned_to !== req.session.userId) return res.status(403).json({ error: 'Not allowed' });
+
+    const dataUrl = String(image);
+    if (!/^data:(image\/(jpeg|jpg|png|webp)|application\/pdf);base64,/.test(dataUrl)) {
+      return res.status(400).json({ error: 'Only a photo (JPG/PNG/WEBP) or a PDF can be attached' });
+    }
+    if (dataUrl.length > 8 * 1024 * 1024) {
+      return res.status(413).json({ error: 'This file is too large (6MB max)' });
+    }
+
+    // Pehli file: proof_image khaali ho tabhi (atomic) — warna extra table me
+    if (!task.has_proof) {
+      const [u] = await db.query('UPDATE checklist_tasks SET proof_image=?, proof_replaced=0 WHERE id=? AND proof_image IS NULL', [dataUrl, req.params.id]);
+      if (u.affectedRows) return res.json({ success: true, count: 1 });
+    }
+    const [[c]] = await db.query('SELECT COUNT(*) AS n FROM checklist_proof_files WHERE task_id=?', [req.params.id]);
+    if (1 + Number(c.n) >= CHECKLIST_PROOF_MAX) {
+      return res.status(400).json({ error: `A task can have at most ${CHECKLIST_PROOF_MAX} proof files` });
+    }
+    await db.query('INSERT INTO checklist_proof_files (task_id, image) VALUES (?,?)', [req.params.id, dataUrl]);
+    res.json({ success: true, count: 2 + Number(c.n) });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Server error. Please try again.' }); }
 });
 

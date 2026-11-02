@@ -1427,6 +1427,8 @@
   <div class="modal" style="max-width:640px">
     <h3>Proof of Work</h3>
     <div id="proofViewMeta" style="font-size:12px;color:var(--muted-foreground);margin-bottom:12px"></div>
+    <!-- Ek se zyada file ho (checklist, max 5) to yahan chhote button — click par wahi neeche khulti hai -->
+    <div id="proofViewThumbs" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:10px"></div>
     <div style="background:var(--muted);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;min-height:120px">
       <img id="proofViewImg" alt="Proof of work" style="max-width:100%;max-height:60vh;border-radius:6px;display:none"/>
       <!-- PDF proof — image tag me PDF nahi khulti, isliye alag frame.
@@ -1467,8 +1469,10 @@
       You can attach proof and add a remark. <strong>Both are optional.</strong>
     </div>
     <div class="form-group">
-      <label for="doneFileInput">Proof — photo or PDF (optional)</label>
+      <label for="doneFileInput" id="doneFileLabel">Proof — photo or PDF (optional)</label>
       <input type="file" id="doneFileInput" accept="image/*,application/pdf" onchange="onDoneFilePicked(this)"/>
+      <!-- Checklist: max 5 files — ek-ek karke ya ek saath jodo (input chhupa rehta hai) -->
+      <button type="button" class="btn btn-outline" id="doneAddFileBtn" style="display:none" onclick="document.getElementById('doneFileInput').click()">📎 Add photo / PDF</button>
       <div id="doneFileName" style="font-size:12px;margin-top:6px;color:var(--muted-foreground)">No file chosen</div>
     </div>
     <!-- Remark wahi doer_remark column hai jo 📝 button use karta hai. Doer ise
