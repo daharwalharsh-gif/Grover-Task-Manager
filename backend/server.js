@@ -3220,6 +3220,53 @@ app.get('/api/fms-tasks/:id', requireAuth, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Server error. Please try again.' }); }
 });
 
+// Ek step ke pending rows (Planned bhara, Actual khaali) — step ki list aur
+// us step ka PDF dono yahi use karte hain, taaki dono me ek hi rows aayein.
+async function _fmsStepPendingRows(sheet, step) {
+  const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+  const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
+  const tabName = sheet.sheet_name || 'Sheet1';
+  const qTab = /^[A-Za-z0-9_]+$/.test(tabName) ? tabName : `'${tabName.replace(/'/g, "''")}'`;
+
+  // Poori tab padho — headers milte hi step ke columns ko NAAM se heal karo (letter
+  // shift ho to bhi sahi column mile). Phir healed columns se indices nikaalo.
+  const response = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: qTab });
+  const allRows = response.data.values || [];
+  const headerRowIdx = (sheet.header_row || 1) - 1;
+  const headers = allRows[headerRowIdx] || [];
+  _healStepCols(step, headers);
+
+  const planIdx = colToIdx(step.plan_col);
+  const actualIdx = colToIdx(step.actual_col);
+  let showCols = [];
+  try { showCols = JSON.parse(step.show_cols||'[]'); } catch(e) {}
+
+  const dataRows = allRows.slice(headerRowIdx + 1);
+
+  const matchedRows = [];
+  dataRows.forEach((row, i) => {
+    const planVal = planIdx >= 0 ? (row[planIdx]||'').trim() : '';
+    const actualVal = actualIdx >= 0 ? (row[actualIdx]||'').trim() : '';
+    if (planVal && !actualVal) {
+      const rowData = {};
+      let colsToShow = showCols.length ? showCols : headers.map((_,hi) => hi);
+      // Plan column always show karo — mandatory
+      if (planIdx >= 0 && !colsToShow.includes(planIdx)) colsToShow = [planIdx, ...colsToShow];
+      colsToShow.forEach(ci => {
+        const h = headers[ci] || `COL ${idxToCol(ci)}`;
+        rowData[h] = row[ci] || '';
+      });
+      matchedRows.push({
+        sheetRowNumber: headerRowIdx + 1 + i + 1,
+        planValue: planVal,
+        actualValue: actualVal,
+        data: rowData
+      });
+    }
+  });
+  return { headers, rows: matchedRows };
+}
+
 // Get pending rows for a step (plan filled, actual empty)
 app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res) => {
   try {
@@ -3230,49 +3277,8 @@ app.get('/api/fms-tasks/:fmsId/steps/:stepId/rows', requireAuth, async (req, res
     if (!steps[0]) return res.status(404).json({ error: 'Step not found' });
     const step = steps[0];
 
-    const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
-    const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
-    const tabName = sheet.sheet_name || 'Sheet1';
-    const qTab = /^[A-Za-z0-9_]+$/.test(tabName) ? tabName : `'${tabName.replace(/'/g, "''")}'`;
-
-    // Poori tab padho — headers milte hi step ke columns ko NAAM se heal karo (letter
-    // shift ho to bhi sahi column mile). Phir healed columns se indices nikaalo.
-    const response = await sheetsApi.spreadsheets.values.get({ spreadsheetId, range: qTab });
-    const allRows = response.data.values || [];
-    const headerRowIdx = (sheet.header_row || 1) - 1;
-    const headers = allRows[headerRowIdx] || [];
-    _healStepCols(step, headers);
-
-    const planIdx = colToIdx(step.plan_col);
-    const actualIdx = colToIdx(step.actual_col);
-    let showCols = [];
-    try { showCols = JSON.parse(step.show_cols||'[]'); } catch(e) {}
-
-    const dataRows = allRows.slice(headerRowIdx + 1);
-
-    const matchedRows = [];
-    dataRows.forEach((row, i) => {
-      const planVal = planIdx >= 0 ? (row[planIdx]||'').trim() : '';
-      const actualVal = actualIdx >= 0 ? (row[actualIdx]||'').trim() : '';
-      if (planVal && !actualVal) {
-        const rowData = {};
-        let colsToShow = showCols.length ? showCols : headers.map((_,hi) => hi);
-        // Plan column always show karo — mandatory
-        if (planIdx >= 0 && !colsToShow.includes(planIdx)) colsToShow = [planIdx, ...colsToShow];
-        colsToShow.forEach(ci => {
-          const h = headers[ci] || `COL ${idxToCol(ci)}`;
-          rowData[h] = row[ci] || '';
-        });
-        matchedRows.push({
-          sheetRowNumber: headerRowIdx + 1 + i + 1,
-          planValue: planVal,
-          actualValue: actualVal,
-          data: rowData
-        });
-      }
-    });
-
-    res.json({ rows: matchedRows, headers, total: matchedRows.length });
+    const { headers, rows } = await _fmsStepPendingRows(sheet, step);
+    res.json({ rows, headers, total: rows.length });
   } catch (err) {
     if (err.code === 403) return res.status(400).json({ error: 'Access denied.' });
     if (err.code === 404) return res.status(400).json({ error: 'Sheet not found.' });
@@ -3686,97 +3692,234 @@ app.post('/api/fms-tracking/pdf', requireAuth, async (req, res) => {
     const title = cut(b.title, 80) || 'FMS';
     const filters = cut(b.filters, 300);
     const sm = b.summary || {};
-
-    const PDFDocument = require('pdfkit');
-    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30, bufferPages: true });
-    // Inter wahi font hai jo MIS image use karti hai; na mile to Helvetica
-    let R = 'Helvetica', B = 'Helvetica-Bold';
-    try {
-      const dir = path.join(__dirname, '..', 'node_modules', '@fontsource', 'inter', 'files');
-      doc.registerFont('Inter', path.join(dir, 'inter-latin-400-normal.woff'));
-      doc.registerFont('InterBold', path.join(dir, 'inter-latin-700-normal.woff'));
-      R = 'Inter'; B = 'InterBold';
-    } catch (_) {}
-
     const safe = title.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'FMS';
     const stamp = new Date().toISOString().slice(0, 10);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="FMS-Tracking-${safe}-${stamp}.pdf"`);
-    doc.pipe(res);
-
-    const X = 30, W = doc.page.width - 60, BOTTOM = doc.page.height - 40;
-    const FS = 8, ROW_H = 17, PAD = 5;
-
-    // Column chaudai: content ke hisaab se, phir poori page width me fit
-    doc.font(R).fontSize(FS);
-    const want = columns.map((c, i) => {
-      doc.font(B); let w = doc.widthOfString(c.toUpperCase());   // heading upper-case me chhapti hai
-      doc.font(R);
-      for (const r of rows.slice(0, 400)) w = Math.max(w, doc.widthOfString(r.cells[i] || ''));
-      return Math.min(Math.max(w + PAD * 2, 45), 230);
+    _sendFmsTablePdf(res, {
+      heading: `FMS Tracking — ${title}`,
+      filters,
+      summary: `Total ${sm.total ?? rows.length}   ·   Still Running ${sm.running ?? '—'}   ·   Finished ${sm.finished ?? '—'}   ·   Late ${sm.late ?? '—'}`,
+      columns, rows,
+      fileName: `FMS-Tracking-${safe}-${stamp}.pdf`,
     });
-    const scale = W / want.reduce((a, b2) => a + b2, 0);
-    const widths = want.map(w => w * scale);
-
-    // Ek line me fit karo, lamba ho to … laga do
-    const fit = (s, w) => {
-      s = String(s || '');
-      if (doc.widthOfString(s) <= w) return s;
-      let lo = 0, hi = s.length;
-      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (doc.widthOfString(s.slice(0, m) + '…') <= w) lo = m; else hi = m - 1; }
-      return s.slice(0, lo) + '…';
-    };
-
-    const drawHead = () => {
-      let y = doc.y;
-      doc.rect(X, y, W, ROW_H).fill('#eef0f4');
-      doc.fillColor('#475467').font(B).fontSize(FS);
-      let x = X;
-      columns.forEach((c, i) => {
-        doc.text(fit(c.toUpperCase(), widths[i] - PAD * 2), x + PAD, y + 5, { lineBreak: false });
-        x += widths[i];
-      });
-      doc.y = y + ROW_H;
-    };
-
-    // ── Upar: naam, filter, ginti ──
-    doc.fillColor('#111827').font(B).fontSize(16).text(`FMS Tracking — ${title}`, X, 30);
-    doc.fillColor('#667085').font(R).fontSize(9)
-      .text(`${BRAND.company || ''}  ·  Generated ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' })}${filters ? '  ·  ' + filters : ''}`, X, doc.y + 2, { width: W });
-    doc.moveDown(0.4);
-    doc.fillColor('#111827').font(B).fontSize(10)
-      .text(`Total ${sm.total ?? rows.length}   ·   Still Running ${sm.running ?? '—'}   ·   Finished ${sm.finished ?? '—'}   ·   Late ${sm.late ?? '—'}`, X, doc.y);
-    doc.moveDown(0.6);
-    drawHead();
-
-    const TONE = { done: '#067647', late: '#d92d20', running: '#475467' };
-    rows.forEach((r, n) => {
-      if (doc.y + ROW_H > BOTTOM) { doc.addPage(); doc.y = 30; drawHead(); }
-      const y = doc.y;
-      if (n % 2) doc.rect(X, y, W, ROW_H).fill('#f8f9fb');
-      let x = X;
-      r.cells.forEach((c, i) => {
-        const last = i === columns.length - 1;
-        doc.fillColor(last ? TONE[r.tone] : '#1f2937').font(last ? B : R).fontSize(FS)
-          .text(fit(c, widths[i] - PAD * 2), x + PAD, y + 5, { lineBreak: false });
-        x += widths[i];
-      });
-      doc.moveTo(X, y + ROW_H).lineTo(X + W, y + ROW_H).lineWidth(0.4).strokeColor('#e4e7ec').stroke();
-      doc.y = y + ROW_H;
-    });
-
-    // Har page ke neeche page number
-    const range = doc.bufferedPageRange();
-    for (let i = 0; i < range.count; i++) {
-      doc.switchToPage(range.start + i);
-      doc.page.margins.bottom = 0;   // warna margin ke neeche likhte hi pdfkit khaali page jod deta hai
-      doc.fillColor('#98a2b3').font(R).fontSize(8)
-        .text(`Page ${i + 1} of ${range.count}`, X, doc.page.height - 25, { width: W, align: 'right', lineBreak: false });
-    }
-    doc.end();
   } catch (err) {
     console.error('fms-tracking pdf error:', err);
     if (!res.headersSent) res.status(500).json({ error: 'Could not create the PDF' });
+  }
+});
+
+// FMS ki list ko A4 landscape table ke PDF me chhaapta hai — FMS Tracking aur
+// FMS Tasks ke cards, dono ke PDF yahi banate hain. columns/rows taiyaar aate
+// hain; har row ke aakhri column ka rang uske tone se (done hara, late laal).
+// fitNarrow: jagah kam ho to sirf lambe columns kaato (FMS Tasks ke PDF).
+function _sendFmsTablePdf(res, { heading, filters, summary, columns, rows, fileName, fitNarrow = false }) {
+  const PDFDocument = require('pdfkit');
+  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30, bufferPages: true });
+  // Inter wahi font hai jo MIS image use karti hai; na mile to Helvetica
+  let R = 'Helvetica', B = 'Helvetica-Bold';
+  try {
+    const dir = path.join(__dirname, '..', 'node_modules', '@fontsource', 'inter', 'files');
+    doc.registerFont('Inter', path.join(dir, 'inter-latin-400-normal.woff'));
+    doc.registerFont('InterBold', path.join(dir, 'inter-latin-700-normal.woff'));
+    R = 'Inter'; B = 'InterBold';
+  } catch (_) {}
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  doc.pipe(res);
+
+  const X = 30, W = doc.page.width - 60, BOTTOM = doc.page.height - 40;
+  const FS = 8, ROW_H = 17, PAD = 5;
+
+  // Column chaudai: content ke hisaab se, phir poori page width me fit
+  doc.font(R).fontSize(FS);
+  const want = columns.map((c, i) => {
+    doc.font(B); let w = doc.widthOfString(c.toUpperCase());   // heading upper-case me chhapti hai
+    // aakhri column bold me chhapta hai — fitNarrow me use bold me hi naapo
+    doc.font(fitNarrow && i === columns.length - 1 ? B : R);
+    for (const r of rows.slice(0, 400)) w = Math.max(w, doc.widthOfString(r.cells[i] || ''));
+    return Math.min(Math.max(w + PAD * 2, 45), 230);
+  });
+  const total = want.reduce((a, b2) => a + b2, 0);
+  let widths;
+  if (fitNarrow && total > W) {
+    // Jagah kam pade to chhote columns (PO, date, status) poore rakho aur sirf
+    // lambe wale (item name…) barabar kaato — sab ko ek saath chhota karne se
+    // "3D-1…" jaisa kat jaata hai.
+    const sorted = [...want].sort((a, b2) => a - b2);
+    let rest = W, n = sorted.length;
+    for (const w of sorted) { if (w * n > rest) break; rest -= w; n--; }
+    const cap = rest / n;
+    widths = want.map(w => Math.min(w, cap));
+  } else {
+    const scale = W / total;
+    widths = want.map(w => w * scale);
+  }
+
+  // Ek line me fit karo, lamba ho to … laga do
+  const fit = (s, w) => {
+    s = String(s || '');
+    if (doc.widthOfString(s) <= w) return s;
+    let lo = 0, hi = s.length;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (doc.widthOfString(s.slice(0, m) + '…') <= w) lo = m; else hi = m - 1; }
+    return s.slice(0, lo) + '…';
+  };
+
+  const drawHead = () => {
+    let y = doc.y;
+    doc.rect(X, y, W, ROW_H).fill('#eef0f4');
+    doc.fillColor('#475467').font(B).fontSize(FS);
+    let x = X;
+    columns.forEach((c, i) => {
+      doc.text(fit(c.toUpperCase(), widths[i] - PAD * 2), x + PAD, y + 5, { lineBreak: false });
+      x += widths[i];
+    });
+    doc.y = y + ROW_H;
+  };
+
+  // ── Upar: naam, filter, ginti ──
+  doc.fillColor('#111827').font(B).fontSize(16).text(heading, X, 30);
+  doc.fillColor('#667085').font(R).fontSize(9)
+    .text(`${BRAND.company || ''}  ·  Generated ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' })}${filters ? '  ·  ' + filters : ''}`, X, doc.y + 2, { width: W });
+  doc.moveDown(0.4);
+  doc.fillColor('#111827').font(B).fontSize(10)
+    .text(summary, X, doc.y);
+  doc.moveDown(0.6);
+  drawHead();
+
+  const TONE = { done: '#067647', late: '#d92d20', running: '#475467' };
+  rows.forEach((r, n) => {
+    if (doc.y + ROW_H > BOTTOM) { doc.addPage(); doc.y = 30; drawHead(); }
+    const y = doc.y;
+    if (n % 2) doc.rect(X, y, W, ROW_H).fill('#f8f9fb');
+    let x = X;
+    r.cells.forEach((c, i) => {
+      const last = i === columns.length - 1;
+      doc.fillColor(last ? TONE[r.tone] : '#1f2937').font(last ? B : R).fontSize(FS)
+        .text(fit(c, widths[i] - PAD * 2), x + PAD, y + 5, { lineBreak: false });
+      x += widths[i];
+    });
+    doc.moveTo(X, y + ROW_H).lineTo(X + W, y + ROW_H).lineWidth(0.4).strokeColor('#e4e7ec').stroke();
+    doc.y = y + ROW_H;
+  });
+
+  // Har page ke neeche page number
+  const range = doc.bufferedPageRange();
+  for (let i = 0; i < range.count; i++) {
+    doc.switchToPage(range.start + i);
+    doc.page.margins.bottom = 0;   // warna margin ke neeche likhte hi pdfkit khaali page jod deta hai
+    doc.fillColor('#98a2b3').font(R).fontSize(8)
+      .text(`Page ${i + 1} of ${range.count}`, X, doc.page.height - 25, { width: W, align: 'right', lineBreak: false });
+  }
+  doc.end();
+}
+
+// PDF file ka naam: "3D-Print-Pending-Orders-2026-11-02.pdf"
+function _fmsPdfName(...parts) {
+  return parts.map(p => String(p || '').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, ''))
+    .filter(Boolean).join('-') + `-${new Date().toISOString().slice(0, 10)}.pdf`;
+}
+
+// FMS Tasks page ke Total / Pending / Completed cards ka PDF. Hisaab wahi jo
+// card ginta hai (overview → buildFmsTracking). Poore orders jaate hain, isliye
+// sirf manager — FMS Tracking ki tarah; doer ko cards par sirf ginti dikhti hai.
+const FMS_CARD_PDF = {
+  total: { label: 'Total Orders', keep: () => true },
+  pending: { label: 'Pending Orders', keep: r => r.status !== 'completed' },
+  completed: { label: 'Completed Orders', keep: r => r.status === 'completed' },
+};
+app.get('/api/fms-tasks/:fmsId/pdf', requireAuth, async (req, res) => {
+  try {
+    if (!['admin', 'hod', 'pc'].includes(req.session.role)) return res.status(403).json({ error: 'Not allowed' });
+    const card = FMS_CARD_PDF[req.query.card];
+    if (!card) return res.status(400).json({ error: 'Unknown card' });
+    const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.fmsId]);
+    if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
+
+    const t = await buildFmsTracking(sheets[0]);
+    const list = t.rows.filter(card.keep);
+    if (!list.length) return res.status(400).json({ error: `No ${card.label.toLowerCase()} to put in the PDF` });
+
+    // Columns FMS Tracking ke PDF jaise: pehchan ke 5 + abhi kahan + kitne steps + haalat
+    const heads = t.infoHeaders.slice(0, 5);
+    const rows = list.map(r => {
+      const done = r.status === 'completed';
+      const tone = done ? 'done' : r.overdueDays > 0 ? 'late' : 'running';
+      const at = done ? 'All steps done'
+        : `${r.currentStep} (Step ${r.currentStepIndex + 1} of ${r.totalSteps}${r.currentPlanned ? ', planned ' + String(r.currentPlanned).split(' ')[0] : ''})`;
+      const status = done ? 'Finished' : tone === 'late' ? `${r.overdueDays} day${r.overdueDays > 1 ? 's' : ''} late` : 'Running';
+      return { cells: [...heads.map((_, n) => r.info[n] || '—'), at, `${r.doneCount} of ${r.totalSteps}`, status], tone };
+    });
+    const done = rows.filter(r => r.tone === 'done').length;
+    const late = rows.filter(r => r.tone === 'late').length;
+    _sendFmsTablePdf(res, {
+      heading: `${t.fmsName} — ${card.label}`,
+      filters: '',
+      summary: `Orders ${rows.length}   ·   Still Running ${rows.length - done}   ·   Finished ${done}   ·   Late ${late}`,
+      columns: [...heads, 'Currently At', 'Steps Done', 'Status'],
+      rows,
+      fileName: _fmsPdfName(t.fmsName, card.label),
+      fitNarrow: true,
+    });
+  } catch (err) {
+    console.error('fms card pdf error:', err);
+    if (res.headersSent) return;
+    if (err && err.code === 403) return res.status(400).json({ error: 'Sheet is not shared with the service account' });
+    res.status(500).json({ error: 'Could not create the PDF' });
+  }
+});
+
+// Ek step ke pending rows ka PDF — wahi rows aur columns jo step par click
+// karne par list me aate hain. Jo step khol sakta hai wahi PDF le sakta hai:
+// admin, ya us step ka doer (patti me baaki steps par 🔒 hota hai).
+app.get('/api/fms-tasks/:fmsId/steps/:stepId/pdf', requireAuth, async (req, res) => {
+  try {
+    const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.fmsId]);
+    if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
+    const sheet = sheets[0];
+    const [steps] = await db.query('SELECT * FROM fms_steps WHERE id=? AND fms_id=?', [req.params.stepId, req.params.fmsId]);
+    if (!steps[0]) return res.status(404).json({ error: 'Step not found' });
+    const step = steps[0];
+    if (req.session.role !== 'admin') {
+      const [mine] = await db.query('SELECT 1 FROM fms_step_doers WHERE step_id=? AND user_id=? LIMIT 1', [step.id, req.session.userId]);
+      if (!mine.length) return res.status(403).json({ error: 'This step is not assigned to you' });
+    }
+
+    const { headers, rows: pending } = await _fmsStepPendingRows(sheet, step);
+    if (!pending.length) return res.status(400).json({ error: 'No pending rows at this step' });
+
+    // Step ke columns, list wale kram me. Bahut hon (step me columns chune hi na
+    // gaye hon to poori sheet aati hai) to pehle 9 — Planned hamesha rehta hai.
+    const MAX_COLS = 9;
+    const allKeys = Object.keys(pending[0].data);
+    const planKey = headers[colToIdx(step.plan_col)] || `COL ${step.plan_col}`;
+    const keep = new Set([planKey, ...allKeys.filter(k => k !== planKey).slice(0, MAX_COLS - 1)]);
+    const keys = allKeys.filter(k => keep.has(k));
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const rows = pending.map(r => {
+      const p = _parseDMY(r.planValue);
+      let days = 0;
+      if (p) { p.setHours(0, 0, 0, 0); days = Math.round((today.getTime() - p.getTime()) / 86400000); }
+      return {
+        cells: [...keys.map(k => r.data[k] || '—'), days > 0 ? `${days} day${days > 1 ? 's' : ''} late` : 'Pending'],
+        tone: days > 0 ? 'late' : 'running',
+      };
+    });
+    const fmsName = sheet.fms_name || sheet.sheet_name || 'FMS';
+    _sendFmsTablePdf(res, {
+      heading: `${fmsName} — Step ${step.step_order}: ${step.step_name}`,
+      filters: 'Pending rows (Planned filled, Actual empty)'
+        + (allKeys.length > keys.length ? `  ·  first ${keys.length} of ${allKeys.length} columns` : ''),
+      summary: `Pending ${rows.length}   ·   Late ${rows.filter(r => r.tone === 'late').length}`,
+      columns: [...keys, 'Status'],
+      rows,
+      fileName: _fmsPdfName(fmsName, `Step ${step.step_order}`, step.step_name),
+      fitNarrow: true,
+    });
+  } catch (err) {
+    console.error('fms step pdf error:', err);
+    if (res.headersSent) return;
+    if (err && err.code === 403) return res.status(400).json({ error: 'Sheet is not shared with the service account' });
+    res.status(500).json({ error: 'Could not create the PDF' });
   }
 });
 

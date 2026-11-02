@@ -6961,6 +6961,13 @@ async function onFMSTasksSelect() {
   trainContainer.style.display = 'block';
   loadFMSTasksOverview(fmsId);   // cards + sheet link — steps ke saath-saath
 
+  // 📝 Open Form — sirf usi FMS par jiska form diya gaya hai
+  const sel = document.getElementById('fmsTasksSelect');
+  const formUrl = _fmsFormUrl(sel.options[sel.selectedIndex].text);
+  const formLink = document.getElementById('fmsFormLink');
+  formLink.href = formUrl || '#';
+  formLink.style.display = formUrl ? 'inline-flex' : 'none';
+
   document.getElementById('fmsTrainInner').innerHTML = '<div style="color:var(--muted-foreground);font-size:12px;padding:20px">Loading steps...</div>';
 
   const data = await api(`/api/fms-tasks/${fmsId}`);
@@ -6989,6 +6996,23 @@ function hideFMSTasksOverview() {
   document.getElementById('fmsTasksCards').style.display = 'none';
   document.getElementById('fmsTasksCardsNote').style.display = 'none';
   document.getElementById('fmsSheetLink').style.display = 'none';
+  document.getElementById('fmsFormLink').style.display = 'none';
+}
+
+// 📝 Har FMS ka order form (Google Sites). FMS ke naam se milta hai — sirf
+// akshar/ank dekhte hain (space, chhota-bada, "FMS" shabd se fark nahi padta)
+// aur poora naam milna chahiye, taaki ek FMS ka form doosre par na lage.
+const FMS_FORM_LINKS = {
+  '3dprint': 'https://sites.google.com/e-marketing.io/3d-print-form/3d-print-form',
+  lycra: 'https://sites.google.com/e-marketing.io/lycraform/lycra-form',
+  brightdye: 'https://sites.google.com/e-marketing.io/brightdye-form/brightdye-form',
+  brightprint: 'https://sites.google.com/e-marketing.io/bright-print-form/bright-print-form',
+  warpknittingprint: 'https://sites.google.com/e-marketing.io/warpnitting-print/print',
+  warpknittingdye: 'https://sites.google.com/e-marketing.io/grover/dye',
+};
+function _fmsFormUrl(name) {
+  const key = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^fms|fms$/g, '');
+  return FMS_FORM_LINKS[key] || '';
 }
 
 async function loadFMSTasksOverview(fmsId) {
@@ -7008,6 +7032,8 @@ async function loadFMSTasksOverview(fmsId) {
     c.onclick = canOpen ? () => openFMSTrackingFor(fmsId, c.dataset.status) : null;
     c.title = canOpen ? 'Click to see these orders in FMS Tracking' : '';
   });
+  // 📄 PDF me poore orders jaate hain — FMS Tracking ki tarah sirf manager ke liye
+  cards.querySelectorAll('.ov-card-pdf').forEach(b => { b.style.display = isFmsManager() ? '' : 'none'; });
 
   _fmsPipeCounts = { fmsId, byStep: null };
   const r = await api(`/api/fms-tasks/${fmsId}/overview`);
@@ -7078,17 +7104,56 @@ function buildFMSPipeline(steps) {
     const isMine = isAdmin || s.isMyStep;
     const doerNames = (s.doers || []).map(d => d.name).join(', ') || '—';
     const n = counts ? counts[s.id] : null;
+    // PDF button card ke andar nahi (button ke andar button nahi chalta) — bagal me, kone par
     return `
-      <button type="button" class="fms-pipe-step" data-step-id="${s.id}" ${isMine ? `onclick="openFMSPipeStep(${s.id})"` : 'disabled'}
-              title="${isMine ? 'Click to view pending rows' : 'Not your step'}">
-        <span class="fms-pipe-num">Step ${s.step_order}</span>
-        <span class="fms-pipe-name">${escapeHtml(s.step_name)}</span>
-        <span class="fms-pipe-doers">${isMine ? '👤' : '🔒'} ${escapeHtml(doerNames)}</span>
-        <span class="fms-pipe-count${n > 0 ? ' has' : ''}" id="fmsPipeCount_${s.id}">${_fmsPipeCountHtml(n)}</span>
-      </button>`;
+      <div class="fms-pipe-item">
+        <button type="button" class="fms-pipe-step${isMine ? ' has-pdf' : ''}" data-step-id="${s.id}" ${isMine ? `onclick="openFMSPipeStep(${s.id})"` : 'disabled'}
+                title="${isMine ? 'Click to view pending rows' : 'Not your step'}">
+          <span class="fms-pipe-num">Step ${s.step_order}</span>
+          <span class="fms-pipe-name">${escapeHtml(s.step_name)}</span>
+          <span class="fms-pipe-doers">${isMine ? '👤' : '🔒'} ${escapeHtml(doerNames)}</span>
+          <span class="fms-pipe-count${n > 0 ? ' has' : ''}" id="fmsPipeCount_${s.id}">${_fmsPipeCountHtml(n)}</span>
+        </button>
+        ${isMine ? `<button type="button" class="fms-pipe-pdf" onclick="downloadFMSCardPDF(this,'step',${s.id})" title="Download this step's pending rows as PDF">📄 PDF</button>` : ''}
+      </div>`;
   }).join('');
   strip.scrollLeft = 0;
   updateFMSPipeBar();
+}
+
+// 📄 Card ka PDF — Total / Pending / Completed orders, ya ek step ke pending
+// rows. Server sheet padh kar wahi rows chhaapta hai jo card ginta hai.
+// Binary aata hai isliye api() ke bajaye fetch->blob.
+async function downloadFMSCardPDF(btn, card, stepId) {
+  const fmsId = fmsTasksActiveFmsId;
+  if (!fmsId || btn.disabled) return;
+  const url = card === 'step'
+    ? `/api/fms-tasks/${fmsId}/steps/${stepId}/pdf`
+    : `/api/fms-tasks/${fmsId}/pdf?card=${card}`;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳';
+  try {
+    const token = localStorage.getItem('authToken');
+    const res = await fetch(url, { credentials: 'same-origin', headers: token ? { Authorization: 'Bearer ' + token } : {} });
+    if (!res.ok) {
+      let msg = 'Failed to generate PDF';
+      try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}
+      showToast(msg, 'error');
+      return;
+    }
+    const blob = await res.blob();
+    const name = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || 'FMS.pdf';
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(href), 5000);
+    showToast('✅ PDF downloaded!');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 function openFMSPipeStep(stepId) {

@@ -517,17 +517,19 @@
         <option value="">-- Select an FMS --</option>
       </select>
       <a id="fmsSheetLink" class="btn btn-outline btn-sm" target="_blank" rel="noopener" style="display:none;white-space:nowrap;text-decoration:none" title="Open this FMS's Google Sheet in a new tab">📄 Open Sheet</a>
+      <a id="fmsFormLink" class="btn btn-outline btn-sm" target="_blank" rel="noopener" style="display:none;white-space:nowrap;text-decoration:none" title="Open this FMS's form in a new tab">📝 Open Form</a>
       <button id="fmsNewRecordBtn" class="btn btn-primary btn-sm" style="display:none;white-space:nowrap" onclick="openNewRecord()">➕ New Record</button>
       <button id="fmsEditRecordBtn" class="btn btn-outline btn-sm" style="display:none;white-space:nowrap;color:var(--chart-1);border-color:color-mix(in srgb,var(--chart-1) 22%,transparent)" onclick="openEditRecord()">✏️ Edit Record</button>
       <button id="fmsPlanPendingBtn" class="btn btn-outline btn-sm" style="display:none;white-space:nowrap;color:var(--warning);border-color:color-mix(in srgb,var(--warning) 26%,transparent)" onclick="openPlanPending()">⏳ Plan date pending</button>
     </div>
 
     <!-- Chune hue FMS ke orders ki ginti (FMS Tracking wala hi hisaab).
-         Manager ke liye click karne par FMS Tracking usi FMS + filter ke saath khulta hai. -->
+         Manager ke liye click karne par FMS Tracking usi FMS + filter ke saath khulta hai.
+         📄 PDF (sirf manager) — us card ke orders ka PDF. -->
     <div class="overview-cards" id="fmsTasksCards" style="display:none">
-      <div class="ov-card total" data-status=""><div class="label">Total Orders</div><div class="number" id="fmsTasksTotal">—</div></div>
-      <div class="ov-card pending" data-status="in-progress"><div class="label">Pending</div><div class="number" id="fmsTasksPending">—</div></div>
-      <div class="ov-card completed" data-status="completed"><div class="label">Completed</div><div class="number" id="fmsTasksDone">—</div></div>
+      <div class="ov-card total" data-status=""><div class="ov-card-head"><div class="label">Total Orders</div><button type="button" class="ov-card-pdf" style="display:none" onclick="event.stopPropagation();downloadFMSCardPDF(this,'total')" title="Download all orders as PDF">📄 PDF</button></div><div class="number" id="fmsTasksTotal">—</div></div>
+      <div class="ov-card pending" data-status="in-progress"><div class="ov-card-head"><div class="label">Pending</div><button type="button" class="ov-card-pdf" style="display:none" onclick="event.stopPropagation();downloadFMSCardPDF(this,'pending')" title="Download pending orders as PDF">📄 PDF</button></div><div class="number" id="fmsTasksPending">—</div></div>
+      <div class="ov-card completed" data-status="completed"><div class="ov-card-head"><div class="label">Completed</div><button type="button" class="ov-card-pdf" style="display:none" onclick="event.stopPropagation();downloadFMSCardPDF(this,'completed')" title="Download completed orders as PDF">📄 PDF</button></div><div class="number" id="fmsTasksDone">—</div></div>
     </div>
     <div id="fmsTasksCardsNote" style="display:none;font-size:13px;margin:-8px 0 16px;padding:9px 12px;border-radius:var(--radius-md);background:color-mix(in srgb,var(--warning) 12%,transparent);border:1px solid color-mix(in srgb,var(--warning) 28%,transparent);color:var(--foreground)"></div>
 

@@ -513,9 +513,10 @@ input[type=date],input[type=time],input[type=datetime-local]{color-scheme:inheri
 .fms-pipe-nav{width:30px;height:30px;flex-shrink:0;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--foreground);font-size:16px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;}
 .fms-pipe-nav:hover:not(:disabled){background:var(--secondary);}
 .fms-pipe-nav:disabled{opacity:.35;cursor:default;}
-.fms-pipe-strip{display:flex;gap:10px;overflow-x:auto;scroll-behavior:smooth;scroll-snap-type:x proximity;scrollbar-width:none;padding:2px;}
+.fms-pipe-strip{display:flex;gap:10px;overflow-x:auto;scroll-behavior:smooth;scroll-snap-type:x proximity;scroll-padding:0 2px;scrollbar-width:none;padding:2px;}
 .fms-pipe-strip::-webkit-scrollbar{display:none;}
-.fms-pipe-step{flex:0 0 184px;min-height:100px;scroll-snap-align:start;text-align:left;font-family:inherit;color:var(--foreground);background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;display:flex;flex-direction:column;gap:3px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .1s;}
+.fms-pipe-item{position:relative;flex:0 0 184px;display:flex;scroll-snap-align:start;}
+.fms-pipe-step{flex:1;min-width:0;min-height:100px;text-align:left;font-family:inherit;color:var(--foreground);background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;display:flex;flex-direction:column;gap:3px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .1s;}
 .fms-pipe-step:hover:not(:disabled){border-color:var(--primary);transform:translateY(-1px);}
 .fms-pipe-step:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
 .fms-pipe-step.active{border-color:var(--primary);background:color-mix(in srgb,var(--primary) 8%,var(--card));box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 35%,transparent);}
@@ -525,6 +526,14 @@ input[type=date],input[type=time],input[type=datetime-local]{color-scheme:inheri
 .fms-pipe-doers{font-size:11px;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .fms-pipe-count{margin-top:auto;padding-top:4px;font-size:12px;font-weight:600;color:var(--muted-foreground);}
 .fms-pipe-count.has{color:var(--destructive);}
+/* 📄 PDF — step card ke neeche daayein kone par, ginti wali line ke saamne */
+.fms-pipe-pdf,.ov-card-pdf{font-family:inherit;font-size:11px;font-weight:600;line-height:1;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--foreground);cursor:pointer;white-space:nowrap;}
+.fms-pipe-pdf:hover:not(:disabled),.ov-card-pdf:hover:not(:disabled){border-color:var(--primary);color:var(--primary);}
+.fms-pipe-pdf:disabled,.ov-card-pdf:disabled{opacity:.6;cursor:wait;}
+.fms-pipe-pdf{position:absolute;right:8px;bottom:8px;}
+.fms-pipe-step.has-pdf .fms-pipe-count{padding-right:52px;}   /* lambi ginti button ke neeche na jaaye */
+.ov-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;}
+.ov-card-head .label{margin-bottom:0;}
 .fms-pipe-bar{height:4px;border-radius:2px;background:var(--muted);margin-top:12px;overflow:hidden;}
 .fms-pipe-bar>div{height:100%;width:100%;border-radius:2px;background:var(--primary);transition:width .15s;}
 .fms-step-rows-table{background:var(--card);border-radius:var(--radius-lg);border:1px solid var(--border);overflow:hidden;margin-top:4px;box-shadow:var(--shadow-xs);}
