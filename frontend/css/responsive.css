@@ -84,6 +84,11 @@
   .overview-cards{ grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
   .ov-card{ padding:14px 16px; }
   .ov-card .number{ font-size:26px; }
+  /* FMS step patti: chhote card, hint ki jagah nahi — swipe se chalti hai */
+  .fms-pipe-hint{ display:none; }
+  .fms-pipe-nav{ margin-left:auto; }
+  .fms-pipe-nav + .fms-pipe-nav{ margin-left:0; }
+  .fms-pipe-step{ flex-basis:150px; }
   .dash-table-scroll{ max-height:none; min-height:0; }
   .chart-wrap{ height:180px; }
 

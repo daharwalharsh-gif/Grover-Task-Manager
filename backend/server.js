@@ -3579,6 +3579,7 @@ async function buildFmsTracking(sheet) {
     fmsName: sheet.fms_name || sheet.sheet_name,
     sheetName: sheet.sheet_name,
     steps: steps.map(s => s.step_name),
+    stepIds: steps.map(s => s.id),
     infoHeaders,
     rows,
   };
@@ -3657,7 +3658,12 @@ app.get('/api/fms-tasks/:fmsId/overview', requireAuth, async (req, res) => {
     const completed = t.rows.filter(r => r.status === 'completed').length;
     // Kisi step ki Planned date hi nahi — ye kisi step ke pending me nahi dikhte
     const noPlan = t.rows.filter(r => r.status === 'not-started').length;
-    res.json({ sheetUrl, total, completed, pending: total - completed, noPlan });
+    // Har step par kitne pending (Planned bhara, Actual khaali) — step patti ke
+    // cards par dikhte hain. Wahi shart jo step ke rows wala API lagata hai.
+    const steps = (t.stepIds || []).map((id, i) => ({
+      id, pending: t.rows.filter(r => r.stages[i] && r.stages[i].status === 'pending').length,
+    }));
+    res.json({ sheetUrl, total, completed, pending: total - completed, noPlan, steps });
   } catch (err) {
     console.error(err); res.status(500).json({ error: 'Server error. Please try again.' });
   }

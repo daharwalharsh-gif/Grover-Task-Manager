@@ -6899,7 +6899,6 @@ async function saveFMS() {
 let fmsTasksActiveFmsId = null;
 let fmsTasksActiveStepId = null;
 let fmsTasksActiveStepData = null;
-let fmsTrainPaused = false;
 
 async function loadFMSTasks() {
   document.getElementById('fmsTasksRefreshBtn').style.display = 'block';
@@ -6970,7 +6969,7 @@ async function onFMSTasksSelect() {
     showToast(data.error, 'error');
     return;
   }
-  buildFMSTrain(data.steps || [], data.sheet);
+  buildFMSPipeline(data.steps || []);
   // "+ New Record" tabhi dikhao jab is FMS ka intake form configured + enabled ho
   // AUR current user allowed ho (admin, ya recordCreators khaali, ya list me shaamil).
   let _cfg = null; try { _cfg = JSON.parse((data.sheet && data.sheet.intake_config) || 'null'); } catch (e) {}
@@ -7010,10 +7009,16 @@ async function loadFMSTasksOverview(fmsId) {
     c.title = canOpen ? 'Click to see these orders in FMS Tracking' : '';
   });
 
+  _fmsPipeCounts = { fmsId, byStep: null };
   const r = await api(`/api/fms-tasks/${fmsId}/overview`);
   // Jawab aane tak user doosra FMS chun chuka ho to ye purana jawab hai
   if (String(document.getElementById('fmsTasksSelect').value) !== String(fmsId)) return;
   if (r.sheetUrl) { link.href = r.sheetUrl; link.style.display = 'inline-flex'; }
+  // Step patti ke cards ki ginti (patti bani ho to abhi, warna banate waqt)
+  const byStep = {};
+  (r.steps || []).forEach(s => { byStep[s.id] = s.pending; });
+  _fmsPipeCounts = { fmsId, byStep };
+  document.querySelectorAll('.fms-pipe-step').forEach(c => setFMSPipeCount(c.dataset.stepId, byStep[c.dataset.stepId]));
   if (r.error) {
     setNums(() => '—');
     note.textContent = '⚠️ ' + r.error;
@@ -7039,45 +7044,77 @@ function openFMSTrackingFor(fmsId, status) {
   if (had) loadFMSTracking(true);
 }
 
-function buildFMSTrain(steps, sheet) {
+// ── Step patti — ruki hui, har step ek card (pehle chalti train thi) ──
+// Card par us step ke pending ki ginti overview API se aati hai (cards wali hi
+// ek sheet read). Jo pehle aa jaaye: patti baad me bane to _fmsPipeCounts se
+// ginti bhar leti hai, ginti baad me aaye to seedha cards me likh deti hai.
+let _fmsPipeCounts = { fmsId: null, byStep: null };
+
+// null = abhi aa rahi hai, undefined = nahi mil saki (sheet padhi nahi gayi)
+function _fmsPipeCountHtml(n) {
+  if (n === null) return '⏳ loading…';
+  if (n === undefined) return '—';
+  return `${n} pending`;
+}
+function setFMSPipeCount(stepId, n) {
+  const el = document.getElementById(`fmsPipeCount_${stepId}`);
+  if (!el) return;
+  el.textContent = _fmsPipeCountHtml(n);
+  el.classList.toggle('has', n > 0);
+}
+
+function buildFMSPipeline(steps) {
+  const strip = document.getElementById('fmsTrainInner');
   if (!steps || !steps.length) {
-    document.getElementById('fmsTrainInner').innerHTML = '<div style="color:var(--muted-foreground);font-size:12px;padding:20px">No steps configured for this FMS.</div>';
+    strip.innerHTML = '<div style="color:var(--muted-foreground);font-size:12px;padding:20px">No steps configured for this FMS.</div>';
+    updateFMSPipeBar();
     return;
   }
   window._fmsAllSteps = steps; // Store all steps for modal use
   const isAdmin = ME.role === 'admin';
-  const uid = ME.id;
+  const counts = String(_fmsPipeCounts.fmsId) === String(fmsTasksActiveFmsId) ? _fmsPipeCounts.byStep : null;
 
-  // Build double set for infinite scroll loop
-  const buildCoaches = () => steps.map((s, i) => {
+  strip.innerHTML = steps.map(s => {
     const isMine = isAdmin || s.isMyStep;
     const doerNames = (s.doers || []).map(d => d.name).join(', ') || '—';
+    const n = counts ? counts[s.id] : null;
     return `
-      <div class="fms-coach ${isMine ? 'mine' : 'not-mine'}" 
-           onclick="${isMine ? `selectFMSStep(${s.id},'${s.step_name.replace(/'/g,"\\'")}','${doerNames.replace(/'/g,"\\'")}')` : ''}"
-           title="${isMine ? 'Click to view tasks' : 'Not your step'}">
-        <div class="fms-coach-num">Step ${s.step_order}</div>
-        <div class="fms-coach-name">${s.step_name}</div>
-        <div class="fms-coach-doers">👤 ${doerNames}</div>
-        ${isMine ? '<div style="font-size:9px;margin-top:4px;opacity:.7">▶ Click to open</div>' : '<div style="font-size:9px;margin-top:4px;opacity:.5">🔒 Not assigned</div>'}
-      </div>
-      ${i < steps.length - 1 ? '<div class="fms-coach-connector"></div>' : ''}`;
+      <button type="button" class="fms-pipe-step" data-step-id="${s.id}" ${isMine ? `onclick="openFMSPipeStep(${s.id})"` : 'disabled'}
+              title="${isMine ? 'Click to view pending rows' : 'Not your step'}">
+        <span class="fms-pipe-num">Step ${s.step_order}</span>
+        <span class="fms-pipe-name">${escapeHtml(s.step_name)}</span>
+        <span class="fms-pipe-doers">${isMine ? '👤' : '🔒'} ${escapeHtml(doerNames)}</span>
+        <span class="fms-pipe-count${n > 0 ? ' has' : ''}" id="fmsPipeCount_${s.id}">${_fmsPipeCountHtml(n)}</span>
+      </button>`;
   }).join('');
-
-  const engine = `
-    <div class="fms-train-engine">
-      🚂
-      <div style="font-size:9px;margin-top:4px;opacity:.7;max-width:70px;text-align:center;word-break:break-word">${(document.getElementById('fmsTasksSelect').selectedOptions[0]?.text || '').substring(0,12)}</div>
-    </div>
-    <div class="fms-coach-connector"></div>`;
-
-  // Double the coaches for seamless loop
-  const coaches = buildCoaches();
-  document.getElementById('fmsTrainInner').innerHTML = engine + coaches + '<div style="width:30px;flex-shrink:0"></div>' + coaches;
-
-  // Set initial speed
-  setTrainSpeed(document.getElementById('fmsTrainSpeedSlider').value);
+  strip.scrollLeft = 0;
+  updateFMSPipeBar();
 }
+
+function openFMSPipeStep(stepId) {
+  const s = (window._fmsAllSteps || []).find(x => x.id === stepId);
+  if (!s) return;
+  selectFMSStep(s.id, s.step_name, (s.doers || []).map(d => d.name).join(', ') || '—');
+}
+
+// ‹ › — ek baar me lagbhag ek screen bhar aage/peeche
+function scrollFMSPipe(dir) {
+  const strip = document.getElementById('fmsTrainInner');
+  strip.scrollBy({ left: dir * Math.max(strip.clientWidth * 0.8, 180), behavior: 'smooth' });
+}
+
+// Neeche ki patli line: kitna dikh chuka hai + arrows ka on/off
+function updateFMSPipeBar() {
+  const strip = document.getElementById('fmsTrainInner');
+  const fill = document.getElementById('fmsPipeBarFill');
+  const max = strip.scrollWidth - strip.clientWidth;
+  fill.style.width = (max > 0 ? (strip.scrollLeft + strip.clientWidth) / strip.scrollWidth * 100 : 100) + '%';
+  document.getElementById('fmsPipePrev').disabled = strip.scrollLeft <= 1;
+  document.getElementById('fmsPipeNext').disabled = strip.scrollLeft >= max - 1;
+}
+window.addEventListener('resize', () => {
+  if (document.getElementById('fmsTrainContainer').style.display !== 'none') updateFMSPipeBar();
+});
 
 function selectFMSStep(stepId, stepName, doerNames) {
   fmsTasksActiveStepId = stepId;
@@ -7092,9 +7129,9 @@ function selectFMSStep(stepId, stepName, doerNames) {
     updBtn.style.display = hasExtras ? 'inline-flex' : 'none';
   }
 
-  // Highlight selected coach
-  document.querySelectorAll('.fms-coach').forEach(c => {
-    c.classList.toggle('active', c.querySelector('.fms-coach-name')?.textContent === stepName);
+  // Chuna hua step card highlight
+  document.querySelectorAll('.fms-pipe-step').forEach(c => {
+    c.classList.toggle('active', String(c.dataset.stepId) === String(stepId));
   });
 
   document.getElementById('fmsTaskStepName').textContent = stepName;
@@ -7102,10 +7139,12 @@ function selectFMSStep(stepId, stepName, doerNames) {
   document.getElementById('fmsTaskRowCount').textContent = '';
   document.getElementById('fmsTaskRowsContainer').innerHTML = `
     <div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">
-      Click "Load Tasks" to fetch pending rows for this step
+      ⏳ Loading pending rows…
     </div>`;
   document.getElementById('fmsTaskStepPanel').style.display = 'block';
   document.getElementById('fmsTaskStepPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Card dabate hi rows khul jaayein — alag se "Load Tasks" dabane ki zaroorat nahi
+  loadFMSTaskRows();
 }
 
 async function loadFMSTaskRows() {
@@ -7114,15 +7153,21 @@ async function loadFMSTaskRows() {
   btn.textContent = '⏳ Loading...';
   btn.disabled = true;
 
-  const r = await api(`/api/fms-tasks/${fmsTasksActiveFmsId}/steps/${fmsTasksActiveStepId}/rows`);
+  const stepId = fmsTasksActiveStepId;
+  const r = await api(`/api/fms-tasks/${fmsTasksActiveFmsId}/steps/${stepId}/rows`);
+  // Beech me doosra step chun liya — ye purane step ka jawab hai
+  if (fmsTasksActiveStepId !== stepId) return;
   btn.textContent = 'Refresh';
   btn.disabled = false;
 
   if (r.error) {
     showToast(r.error, 'error');
+    document.getElementById('fmsTaskRowsContainer').innerHTML = `
+      <div class="empty" style="background:var(--card);border-radius:12px;border:1px solid var(--border);">⚠️ ${escapeHtml(r.error)}</div>`;
     return;
   }
 
+  setFMSPipeCount(stepId, r.total || 0);   // card par bhi taaza ginti
   document.getElementById('fmsTaskRowCount').textContent = r.total ? `${r.total} pending row(s)` : '✅ All done!';
 
   if (!r.rows || !r.rows.length) {
@@ -7767,6 +7812,7 @@ async function saveFMSDone() {
     // Row count badge update karo
     const countEl = document.getElementById('fmsTaskRowCount');
     if (countEl) countEl.textContent = remaining ? `${remaining} pending row(s)` : '✅ All done!';
+    setFMSPipeCount(fmsTasksActiveStepId, remaining);   // step card ki ginti bhi
     const searchCountEl = document.getElementById('fmsRowSearchCount');
     if (searchCountEl) searchCountEl.textContent = `${remaining} row(s)`;
     // Table re-render (instant, no API call)
@@ -7793,26 +7839,6 @@ async function saveFMSDone() {
   if (typeof loadDashFMS === 'function' && document.getElementById('page-dashboard')?.classList.contains('active')) {
     loadDashFMS();
   }
-}
-
-function setTrainSpeed(val) {
-  const dur = parseInt(val);
-  document.getElementById('fmsTrainSpeedLabel').textContent = dur + 's';
-  const scroll = document.getElementById('fmsTrainInner');
-  if (scroll) {
-    scroll.style.setProperty('--train-dur', dur + 's');
-    scroll.style.animationDuration = dur + 's';
-  }
-  const track = document.getElementById('fmsTrainTrack');
-  if (track) track.style.setProperty('--train-dur', dur + 's');
-}
-
-function toggleTrainPause() {
-  fmsTrainPaused = !fmsTrainPaused;
-  const scroll = document.getElementById('fmsTrainInner');
-  const btn = document.getElementById('fmsTrainPauseBtn');
-  if (scroll) scroll.style.animationPlayState = fmsTrainPaused ? 'paused' : 'running';
-  if (btn) btn.textContent = fmsTrainPaused ? '▶ Play' : '⏸ Pause';
 }
 
 // ══════════════════════════════════════════════════════

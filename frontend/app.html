@@ -531,25 +531,17 @@
     </div>
     <div id="fmsTasksCardsNote" style="display:none;font-size:13px;margin:-8px 0 16px;padding:9px 12px;border-radius:var(--radius-md);background:color-mix(in srgb,var(--warning) 12%,transparent);border:1px solid color-mix(in srgb,var(--warning) 28%,transparent);color:var(--foreground)"></div>
 
-    <!-- Train Container -->
-    <div id="fmsTrainContainer" style="display:none;margin-bottom:16px">
-      <div style="font-size:12px;font-weight:600;color:var(--muted-foreground);margin-bottom:8px;text-transform:uppercase;letter-spacing:.4px">
-        Process Flow — Click a step to view tasks
-        <span id="fmsTrainLegend" style="margin-left:12px;font-weight:400;text-transform:none">
-          <span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 65%,#fff));display:inline-block"></span> Your step</span>
-          <span style="margin-left:10px;display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:3px;background:var(--foreground);display:inline-block;opacity:.5"></span> Other step</span>
-        </span>
+    <!-- Steps — ruki hui patti (pehle chalti train thi). Har card par us step ke
+         pending; card dabate hi us step ke rows neeche khul jaate hain. -->
+    <div id="fmsTrainContainer" class="fms-pipe" style="display:none">
+      <div class="fms-pipe-head">
+        <div class="fms-pipe-title">Step-wise Pipeline</div>
+        <div class="fms-pipe-hint">Pending rows at each step · click to view</div>
+        <button type="button" class="fms-pipe-nav" id="fmsPipePrev" onclick="scrollFMSPipe(-1)" aria-label="Scroll steps left">‹</button>
+        <button type="button" class="fms-pipe-nav" id="fmsPipeNext" onclick="scrollFMSPipe(1)" aria-label="Scroll steps right">›</button>
       </div>
-      <div class="fms-train-track" id="fmsTrainTrack">
-        <div id="fmsTrainInner" class="fms-train-scroll"></div>
-      </div>
-      <div class="fms-train-speed">
-        <span>🐢</span>
-        <input type="range" id="fmsTrainSpeedSlider" min="5" max="60" value="18" oninput="setTrainSpeed(this.value)"/>
-        <span>🐇</span>
-        <span style="margin-left:8px;color:var(--foreground);font-weight:600" id="fmsTrainSpeedLabel">18s</span>
-        <button class="btn btn-outline btn-sm" style="margin-left:auto" id="fmsTrainPauseBtn" onclick="toggleTrainPause()">⏸ Pause</button>
-      </div>
+      <div id="fmsTrainInner" class="fms-pipe-strip" onscroll="updateFMSPipeBar()"></div>
+      <div class="fms-pipe-bar"><div id="fmsPipeBarFill"></div></div>
     </div>
 
     <!-- Selected Step Info + Rows -->
