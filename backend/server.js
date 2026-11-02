@@ -3623,6 +3623,46 @@ app.get('/api/fms-tracking', requireAuth, async (req, res) => {
   }
 });
 
+// FMS Tasks page ke upar: ek FMS ke Total / Pending / Completed orders + sheet ka
+// link. Ginti wahi jo FMS Tracking karta hai (buildFmsTracking), taaki dono page
+// ek hi number dikhayein. Sirf ginti jaati hai, rows nahi — isliye doer bhi dekh sakta hai.
+app.get('/api/fms-tasks/:fmsId/overview', requireAuth, async (req, res) => {
+  try {
+    const role = req.session.role;
+    const manager = ['admin', 'hod', 'pc'].includes(role);
+    if (!manager && !await _canAccessFms(req.session.userId, req.params.fmsId, false)) {
+      return res.status(403).json({ error: 'No access to this FMS' });
+    }
+    const [sheets] = await db.query('SELECT * FROM fms_sheets WHERE id=?', [req.params.fmsId]);
+    if (!sheets[0]) return res.status(404).json({ error: 'FMS not found' });
+    const sheet = sheets[0];
+
+    // Link pehle — sheet padhne me dikkat ho tab bhi link kaam aaye.
+    // gid mile to seedha usi tab par khulti hai, warna pehle tab par.
+    const spreadsheetId = extractSpreadsheetId(sheet.sheet_id);
+    let sheetUrl = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/edit`;
+    try {
+      const sheetsApi = await getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
+      const gid = await _getSheetGid(sheetsApi, spreadsheetId, sheet.sheet_name || 'Sheet1');
+      if (gid != null) sheetUrl += `#gid=${gid}`;
+    } catch (e) { /* bina gid ke link */ }
+
+    let t;
+    try { t = await buildFmsTracking(sheet); }
+    catch (e) {
+      const msg = e && e.code === 403 ? 'Sheet is not shared with the service account' : 'The sheet could not be read';
+      return res.json({ sheetUrl, error: msg });
+    }
+    const total = t.rows.length;
+    const completed = t.rows.filter(r => r.status === 'completed').length;
+    // Kisi step ki Planned date hi nahi — ye kisi step ke pending me nahi dikhte
+    const noPlan = t.rows.filter(r => r.status === 'not-started').length;
+    res.json({ sheetUrl, total, completed, pending: total - completed, noPlan });
+  } catch (err) {
+    console.error(err); res.status(500).json({ error: 'Server error. Please try again.' });
+  }
+});
+
 // FMS Tracking ka PDF — jo screen par dikh raha hai (chuna hua FMS tab +
 // search/step/status filter) wahi rows browser bhejta hai. Sheet dobara nahi
 // padhte: filter browser me lagte hain, aur PDF ko screen se mel khana chahiye.

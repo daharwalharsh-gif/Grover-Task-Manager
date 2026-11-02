@@ -6912,6 +6912,7 @@ async function loadFMSTasks() {
   trainContainer.style.display = 'none';
   stepPanel.style.display = 'none';
   emptyEl.style.display = 'none';
+  hideFMSTasksOverview();
 
   const list = await api('/api/fms-tasks');
   if (list.error) {
@@ -6951,6 +6952,7 @@ async function onFMSTasksSelect() {
     if (nrBtn) nrBtn.style.display = 'none';
     if (editBtn) editBtn.style.display = 'none';
     if (ppBtn) ppBtn.style.display = 'none';
+    hideFMSTasksOverview();
     return;
   }
 
@@ -6958,6 +6960,7 @@ async function onFMSTasksSelect() {
   fmsTasksActiveStepId = null;
   stepPanel.style.display = 'none';
   trainContainer.style.display = 'block';
+  loadFMSTasksOverview(fmsId);   // cards + sheet link — steps ke saath-saath
 
   document.getElementById('fmsTrainInner').innerHTML = '<div style="color:var(--muted-foreground);font-size:12px;padding:20px">Loading steps...</div>';
 
@@ -6978,6 +6981,62 @@ async function onFMSTasksSelect() {
   if (editBtn) editBtn.style.display = (_intakeOn && _canCreate) ? 'inline-flex' : 'none';
   // "⏳ Plan date pending" tabhi jab next-step planned column configured ho
   if (ppBtn) ppBtn.style.display = (_cfg && _cfg.nextStep && _cfg.nextStep.enabled !== false && _cfg.nextStep.planCol) ? 'inline-flex' : 'none';
+}
+
+// ── Upar ke cards (Total / Pending / Completed) + 📄 Open Sheet ──
+// Ginti server par FMS Tracking wale hisaab se hoti hai (poori sheet padh kar),
+// isliye steps ke saath-saath alag se aati hai — train us ka intezaar nahi karti.
+function hideFMSTasksOverview() {
+  document.getElementById('fmsTasksCards').style.display = 'none';
+  document.getElementById('fmsTasksCardsNote').style.display = 'none';
+  document.getElementById('fmsSheetLink').style.display = 'none';
+}
+
+async function loadFMSTasksOverview(fmsId) {
+  const cards = document.getElementById('fmsTasksCards');
+  const note = document.getElementById('fmsTasksCardsNote');
+  const link = document.getElementById('fmsSheetLink');
+  const nums = { total: 'fmsTasksTotal', pending: 'fmsTasksPending', completed: 'fmsTasksDone' };
+  const setNums = f => Object.entries(nums).forEach(([k, id]) => { document.getElementById(id).textContent = f(k); });
+  setNums(() => '…');
+  cards.style.display = '';
+  note.style.display = 'none';
+  link.style.display = 'none';
+  // Manager card dabaye to FMS Tracking usi FMS + filter ke saath khule (doer ke liye wo page nahi hai)
+  const canOpen = isFmsManager() && !isPageDisabled('fms-tracking');
+  cards.querySelectorAll('.ov-card').forEach(c => {
+    c.classList.toggle('clickable', canOpen);
+    c.onclick = canOpen ? () => openFMSTrackingFor(fmsId, c.dataset.status) : null;
+    c.title = canOpen ? 'Click to see these orders in FMS Tracking' : '';
+  });
+
+  const r = await api(`/api/fms-tasks/${fmsId}/overview`);
+  // Jawab aane tak user doosra FMS chun chuka ho to ye purana jawab hai
+  if (String(document.getElementById('fmsTasksSelect').value) !== String(fmsId)) return;
+  if (r.sheetUrl) { link.href = r.sheetUrl; link.style.display = 'inline-flex'; }
+  if (r.error) {
+    setNums(() => '—');
+    note.textContent = '⚠️ ' + r.error;
+    note.style.display = 'block';
+    return;
+  }
+  setNums(k => r[k]);
+  if (r.noPlan > 0) {
+    note.textContent = `⚠️ ${r.noPlan} order${r.noPlan > 1 ? 's have' : ' has'} no Planned date in the sheet yet, so ${r.noPlan > 1 ? 'they do' : 'it does'} not show under any step. Check that the DATE is filled in the sheet.`;
+    note.style.display = 'block';
+  }
+}
+
+function openFMSTrackingFor(fmsId, status) {
+  const had = !!_fmsTrack;
+  _fmsTrackTab = String(fmsId);
+  document.getElementById('fmsTrackSearch').value = '';
+  document.getElementById('fmsTrackStep').value = '';
+  document.getElementById('fmsTrackStatus').value = status || '';
+  navigate('fms-tracking', document.getElementById('nav-fms-tracking'));
+  // Pehle se padha hua data purana ho sakta hai — cards abhi sheet se aaye hain,
+  // list bhi taaza dikhe. (Pehli baar me navigate khud padh leta hai.)
+  if (had) loadFMSTracking(true);
 }
 
 function buildFMSTrain(steps, sheet) {
