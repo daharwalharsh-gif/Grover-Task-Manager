@@ -7372,17 +7372,14 @@ function openFMSDoneModal(rowIdx) {
     if (planDate && !isNaN(planDate.getTime()) && now > planDate) isDelayed = true;
   } catch(e) {}
 
-  // Remark box HAMESHA dikhao. Late ho to warning-style + required, warna optional.
+  // Late ho to delay-reason box nahi dikhta (na hi reason maanga jaata hai);
+  // time par ho to optional Remark box.
   window._fmsDoneIsLate = isDelayed;
-  document.getElementById('fmsDoneDelaySection').style.display = 'block';
+  document.getElementById('fmsDoneDelaySection').style.display = isDelayed ? 'none' : 'block';
   document.getElementById('fmsDoneDelayReason').value = '';
   const rBox = document.getElementById('fmsDoneRemarkBox');
   const rLabel = document.getElementById('fmsDoneRemarkLabel');
-  if (isDelayed) {
-    rBox.style.background = 'color-mix(in srgb,var(--warning) 12%,transparent)'; rBox.style.borderColor = 'color-mix(in srgb,var(--warning) 26%,transparent)';
-    rLabel.innerHTML = '⚠️ Delay detected — reason required <span style="color:var(--destructive)">*</span>';
-    document.getElementById('fmsDoneDelayReason').placeholder = 'Reason for the delay…';
-  } else {
+  if (!isDelayed) {
     rBox.style.background = 'var(--muted)'; rBox.style.borderColor = 'var(--border)';
     rLabel.innerHTML = '📝 Remark <span style="color:var(--muted-foreground);font-weight:400;font-size:11px">(optional)</span>';
     document.getElementById('fmsDoneDelayReason').placeholder = 'Add a remark…';
@@ -7525,9 +7522,8 @@ async function saveFMSDone() {
   const errEl = document.getElementById('fmsDoneErr');
   errEl.style.display = 'none';
 
-  // Remark (auto → Remarks column). Late ho to required, warna optional.
+  // Remark (auto → Remarks column) — optional.
   const delayReason = document.getElementById('fmsDoneDelayReason').value.trim();
-  if (window._fmsDoneIsLate && !delayReason) { errEl.textContent = 'A delay reason is required'; errEl.style.display = 'block'; return; }
 
   const saveBtn = document.getElementById('fmsDoneSaveBtn') || document.querySelector('#fmsDoneModal .btn-green');
   saveBtn.textContent = '⏳ Saving...';
