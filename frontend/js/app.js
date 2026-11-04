@@ -7009,6 +7009,7 @@ const FMS_FORM_LINKS = {
   brightprint: 'https://sites.google.com/e-marketing.io/bright-print-form/bright-print-form',
   warpknittingprint: 'https://sites.google.com/e-marketing.io/warpnitting-print/print',
   warpknittingdye: 'https://sites.google.com/e-marketing.io/grover/dye',
+  gt2: 'https://sites.google.com/e-marketing.io/gt1form/gt-1-form',
 };
 function _fmsFormUrl(name) {
   const key = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '').replace(/^fms|fms$/g, '');
