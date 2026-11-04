@@ -7156,15 +7156,17 @@ async function downloadFMSCardPDF(btn, card, stepId) {
   }
 }
 
-// 📄 All Pending PDF — har FMS ke har step ke pending, A4 khade page par.
-// Saari sheets padhni padti hain, isliye kuch second lag sakte hain.
+// 📄 All Pending PDF — chune hue FMS ke saare steps ke pending, A4 khade page
+// par; koi FMS na chuna ho to har FMS ka. Sheet padhne me kuch second lagte hain.
 async function downloadFMSAllPendingPDF(btn) {
   if (btn.disabled) return;
+  const fmsId = document.getElementById('fmsTasksSelect').value;
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳ Making PDF…';
   try {
     const token = localStorage.getItem('authToken');
-    const res = await fetch('/api/fms-pending/pdf', { credentials: 'same-origin', headers: token ? { Authorization: 'Bearer ' + token } : {} });
+    const url = '/api/fms-pending/pdf' + (fmsId ? `?fmsId=${encodeURIComponent(fmsId)}` : '');
+    const res = await fetch(url, { credentials: 'same-origin', headers: token ? { Authorization: 'Bearer ' + token } : {} });
     if (!res.ok) {
       let msg = 'Failed to generate PDF';
       try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}

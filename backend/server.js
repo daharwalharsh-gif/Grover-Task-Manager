@@ -4044,9 +4044,10 @@ function _sendFmsPendingReportPdf(res, { heading, summary, sections, fileName })
   doc.end();
 }
 
-// FMS Tasks page ke upar "📄 All Pending PDF" — har FMS ke har step ke pending
-// orders ek hi PDF me. Ginti wahi jo step cards par dikhti hai (buildFmsTracking:
-// Planned bhara, Actual khaali); har FMS ki sheet ek hi baar padhi jaati hai.
+// FMS Tasks page ke upar "📄 All Pending PDF" — chune hue FMS (?fmsId=) ke saare
+// steps ke pending orders; koi FMS na chuna ho to har FMS ka, ek hi PDF me.
+// Ginti wahi jo step cards par dikhti hai (buildFmsTracking: Planned bhara,
+// Actual khaali); har FMS ki sheet ek hi baar padhi jaati hai.
 // Jo jis FMS/step ko FMS Tasks me khol sakta hai wahi aata hai: admin ko sab,
 // baaki ko sirf apne steps.
 app.get('/api/fms-pending/pdf', requireAuth, async (req, res) => {
@@ -4054,10 +4055,14 @@ app.get('/api/fms-pending/pdf', requireAuth, async (req, res) => {
     const uid = req.session.userId;
     const isAdmin = req.session.role === 'admin';
     // Wahi FMS, usi kram me, jo FMS Tasks ki list me dikhte hain
-    const [list] = isAdmin
+    const [visible] = isAdmin
       ? await db.query('SELECT * FROM fms_sheets ORDER BY created_at DESC')
       : await db.query(`SELECT DISTINCT fs.* FROM fms_sheets fs JOIN fms_steps fst ON fst.fms_id=fs.id JOIN fms_step_doers fsd ON fsd.step_id=fst.id WHERE fsd.user_id=? ORDER BY fs.created_at DESC`, [uid]);
+    const wanted = String(req.query.fmsId || '').trim();
+    const list = wanted ? visible.filter(s => String(s.id) === wanted) : visible;
+    if (wanted && !list.length) return res.status(404).json({ error: 'FMS not found' });
     if (!list.length) return res.status(400).json({ error: 'No FMS available' });
+    const one = !!wanted;   // ek hi FMS — summary me FMS ka column nahi chahiye
     let mine = null;
     if (!isAdmin) {
       const [r] = await db.query('SELECT step_id FROM fms_step_doers WHERE user_id=?', [uid]);
@@ -4087,7 +4092,7 @@ app.get('/api/fms-pending/pdf', requireAuth, async (req, res) => {
     let total = 0, totalLate = 0;
     for (const { sheet, t, error } of read) {
       const fmsName = sheet.fms_name || sheet.sheet_name || 'FMS';
-      if (error) { summaryRows.push({ cells: [fmsName, error, '—', '—'], tone: 'late' }); continue; }
+      if (error) { summaryRows.push({ cells: [...(one ? [] : [fmsName]), error, '—', '—'], tone: 'late' }); continue; }
       const heads = t.infoHeaders.slice(0, 5);          // FMS Tracking jitne pehchan wale columns
       t.stepIds.forEach((stepId, i) => {
         if (mine && !mine.has(stepId)) return;
@@ -4106,7 +4111,7 @@ app.get('/api/fms-pending/pdf', requireAuth, async (req, res) => {
         }
         total += rows.length; totalLate += late;
         const stepLabel = `Step ${i + 1}: ${t.steps[i]}`;
-        summaryRows.push({ cells: [fmsName, stepLabel, String(rows.length), String(late)], tone: late ? 'late' : 'running' });
+        summaryRows.push({ cells: [...(one ? [] : [fmsName]), stepLabel, String(rows.length), String(late)], tone: late ? 'late' : 'running' });
         if (rows.length) {
           sections.push({
             title: `${fmsName}  ·  ${stepLabel}`,
@@ -4117,11 +4122,12 @@ app.get('/api/fms-pending/pdf', requireAuth, async (req, res) => {
       });
     }
 
+    const oneName = one ? (list[0].fms_name || list[0].sheet_name || 'FMS') : '';
     _sendFmsPendingReportPdf(res, {
-      heading: 'All Pending — FMS',
-      summary: `Pending ${total}   ·   Late ${totalLate}   ·   ${read.length} FMS`,
-      sections: [{ title: 'Summary', columns: ['FMS', 'Step', 'Pending', 'Late'], rows: summaryRows }, ...sections],
-      fileName: _fmsPdfName('All Pending'),
+      heading: one ? `${oneName} — All Pending` : 'All Pending — FMS',
+      summary: `Pending ${total}   ·   Late ${totalLate}` + (one ? '' : `   ·   ${read.length} FMS`),
+      sections: [{ title: 'Summary', columns: [...(one ? [] : ['FMS']), 'Step', 'Pending', 'Late'], rows: summaryRows }, ...sections],
+      fileName: one ? _fmsPdfName(oneName, 'All Pending') : _fmsPdfName('All Pending'),
     });
   } catch (err) {
     console.error('fms all-pending pdf error:', err);
