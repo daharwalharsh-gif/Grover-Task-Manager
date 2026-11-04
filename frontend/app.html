@@ -504,7 +504,8 @@
   <div id="page-fms-tasks" class="page">
     <div class="page-header">
       <div></div>
-      <div id="fmsTasksRefreshBtn" style="display:none">
+      <div id="fmsTasksRefreshBtn" style="display:none;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn btn-outline btn-sm" onclick="downloadFMSAllPendingPDF(this)" title="Every FMS, every step — pending orders on A4 pages">📄 All Pending PDF</button>
         <button class="btn btn-outline btn-sm" onclick="loadFMSTasks()">🔄 Refresh</button>
       </div>
     </div>
