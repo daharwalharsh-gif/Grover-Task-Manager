@@ -1910,14 +1910,26 @@ function renderTasksTable() {
   const dateTo = document.getElementById('tasksDateTo')?.value || '';
   const container = document.getElementById('tasksContent');
   const today = new Date().toISOString().split('T')[0];
-  // Checklist ke future tasks sirf ek din pehle dikhte hain (kal tak). Server
+  // Checklist ke future tasks: har doer ke sirf AGLE task wale din ke. Server
   // saal bhar aage ke daily tasks bhej deta hai (Transfer/Bulk Delete ko
-  // chahiye), par list me wo sab ek saath bhar jaate the.
-  const _tm = new Date(); _tm.setDate(_tm.getDate() + 1);
-  const tomorrow = `${_tm.getFullYear()}-${String(_tm.getMonth() + 1).padStart(2, '0')}-${String(_tm.getDate()).padStart(2, '0')}`;
+  // chahiye), par list me wo sab ek saath bhar jaate the. Pehle seedha "kal tak"
+  // tha — par Ravivaar ko checklist task bante hi nahi, to Shanivaar (aur chhutti
+  // se pehle) Upcoming khaali rehta aur Somvaar ke task chhupe rehte.
+  // (local date — "today" upar UTC se hai, raat 12–5:30 IST tak wo kal ki date deta)
+  const _ld = new Date();
+  const localToday = `${_ld.getFullYear()}-${String(_ld.getMonth() + 1).padStart(2, '0')}-${String(_ld.getDate()).padStart(2, '0')}`;
+  const _doerKey = t => String(t.assigned_to ?? t.assignedToId ?? t.assignedToName);
+  const nextTaskDay = {};
+  if (tasksType === 'checklist') {
+    for (const t of allTasksData) {
+      if (t.status === 'completed' || !t.due_date || t.due_date <= localToday) continue;
+      const k = _doerKey(t);
+      if (!nextTaskDay[k] || t.due_date < nextTaskDay[k]) nextTaskDay[k] = t.due_date;
+    }
+  }
 
   let tasks = allTasksData.filter(t => {
-    if (tasksType === 'checklist' && t.status !== 'completed' && t.due_date && t.due_date > tomorrow) return false;
+    if (tasksType === 'checklist' && t.status !== 'completed' && t.due_date && t.due_date > localToday && t.due_date > nextTaskDay[_doerKey(t)]) return false;
     const matchStatus =
       taskStatusFilter === 'all' ? true :
       taskStatusFilter === 'pending' ? (t.status === 'pending' && (!t.due_date || t.due_date <= today)) :
